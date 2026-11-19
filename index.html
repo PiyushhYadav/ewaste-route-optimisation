@@ -1,0 +1,2570 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>E-Waste Collection Route Optimisation — DAA Interactive Workbench</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', '-apple-system', 'BlinkMacSystemFont', 'sans-serif'],
+            mono: ['JetBrains Mono', 'monospace'],
+          },
+          colors: {
+            surface: {
+              canvas: '#F6F7F9',
+              card: '#FFFFFF',
+              subtle: '#F1F5F9',
+              border: '#E2E8F0',
+              borderStrong: '#CBD5E1'
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    body {
+      background-color: #F6F7F9;
+      color: #0F172A;
+      font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+      overflow-x: hidden;
+    }
+    .tabular {
+      font-variant-numeric: tabular-nums;
+    }
+    @keyframes scanFlow {
+      to { stroke-dashoffset: -24; }
+    }
+    .edge-scan-anim {
+      stroke-dasharray: 8 4;
+      animation: scanFlow 0.7s linear infinite;
+    }
+    @keyframes pulseRing {
+      0% { transform: scale(0.95); opacity: 0.7; }
+      70% { transform: scale(1.22); opacity: 0; }
+      100% { transform: scale(1.22); opacity: 0; }
+    }
+    .node-pulse-ring {
+      transform-origin: center;
+      transform-box: fill-box;
+      animation: pulseRing 1.6s ease-out infinite;
+    }
+    @keyframes cargoFloat {
+      0% { opacity: 1; transform: translateY(0px); }
+      100% { opacity: 0; transform: translateY(-28px); }
+    }
+    .cargo-pop {
+      animation: cargoFloat 1.2s ease-out forwards;
+    }
+    @keyframes facilityIntakePulse {
+      0% { transform: scale(1); }
+      40% { transform: scale(1.045); }
+      100% { transform: scale(1); }
+    }
+    .facility-pulse {
+      transform-origin: center;
+      transform-box: fill-box;
+      animation: facilityIntakePulse 0.55s cubic-bezier(0.22, 1, 0.36, 1);
+    }
+    .cap-bar-smooth {
+      transition: width 0.55s cubic-bezier(0.22, 1, 0.36, 1), fill 0.35s ease;
+    }
+    input[type="range"] {
+      -webkit-appearance: none;
+      appearance: none;
+      height: 5px;
+      background: #E2E8F0;
+      border-radius: 999px;
+      outline: none;
+    }
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 15px;
+      height: 15px;
+      border-radius: 50%;
+      background: #0F172A;
+      border: 2px solid #FFFFFF;
+      box-shadow: 0 1px 3px rgba(15, 23, 42, 0.25);
+      cursor: pointer;
+    }
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #CBD5E1; border-radius: 3px; }
+    .map-fullscreen {
+      position: fixed !important;
+      inset: 12px !important;
+      z-index: 50 !important;
+      height: calc(100vh - 24px) !important;
+      box-shadow: 0 25px 50px -12px rgba(15, 23, 42, 0.25);
+    }
+    /* High-Precision Custom Map Pointer System */
+    #canvasWrapper.custom-cursor-active,
+    #canvasWrapper.custom-cursor-active svg,
+    #canvasWrapper.custom-cursor-active g {
+      cursor: none !important;
+    }
+    #canvasWrapper.custom-cursor-active #builderToolbar,
+    #canvasWrapper.custom-cursor-active #builderToolbar *,
+    #canvasWrapper.custom-cursor-active #zoomToolbar,
+    #canvasWrapper.custom-cursor-active #zoomToolbar *,
+    #canvasWrapper.custom-cursor-active #edgePopover,
+    #canvasWrapper.custom-cursor-active #edgePopover * {
+      cursor: pointer !important;
+    }
+    #canvasWrapper.custom-cursor-active #edgePopover input {
+      cursor: text !important;
+    }
+    #customMapPointer {
+      pointer-events: none;
+      will-change: transform;
+      transition: opacity 0.15s ease;
+    }
+    @keyframes reticleSpin {
+      to { transform: rotate(360deg); }
+    }
+    .reticle-ring-spin {
+      transform-origin: center;
+      animation: reticleSpin 9s linear infinite;
+    }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col">
+
+  <!-- TOP HEADER & KPI STRIP -->
+  <header class="bg-white border-b border-slate-200 sticky top-0 z-30">
+    <div class="max-w-[1640px] mx-auto px-4 sm:px-6 py-3 flex flex-wrap items-center justify-between gap-3">
+      <div>
+        <div class="flex items-center gap-2.5 flex-wrap">
+          <span class="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-slate-900 text-white">
+            <i data-lucide="route" class="w-4 h-4"></i>
+          </span>
+          <h1 class="text-base sm:text-lg font-bold tracking-tight text-slate-900">
+            E-Waste Collection Route Optimisation
+          </h1>
+          <span class="text-[11px] font-mono font-medium px-2 py-0.5 rounded bg-slate-100 text-slate-700 border border-slate-200">
+            Dijkstra O((V + E) log V)
+          </span>
+          <span class="text-[11px] font-mono font-medium px-2 py-0.5 rounded bg-slate-100 text-slate-700 border border-slate-200">
+            Greedy O(N · M log M)
+          </span>
+        </div>
+        <p class="text-xs text-slate-500 mt-0.5 ml-10">
+          Weighted City Graph Shortest-Path & Capacity-Constrained Recycling Facility Allocation
+        </p>
+      </div>
+
+      <div class="flex items-center gap-2 flex-wrap">
+        <button id="btnCopyReport" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-700 bg-white hover:bg-slate-50 border border-slate-200 transition" title="Copy Formatted Routing Summary">
+          <i id="iconCopyReport" data-lucide="clipboard-copy" class="w-3.5 h-3.5 text-slate-600"></i>
+          <span id="labelCopyReport">Copy Report</span>
+        </button>
+        <button id="btnCompareOptimal" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 transition">
+          <i data-lucide="scale" class="w-3.5 h-3.5 text-emerald-600"></i>
+          <span>Compare vs. Global Optimal</span>
+        </button>
+        <button id="btnToggleAudio" class="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium text-slate-600 bg-white hover:bg-slate-50 border border-slate-200 transition" title="Toggle Sound Effects">
+          <i id="iconAudio" data-lucide="volume-2" class="w-3.5 h-3.5 text-slate-500"></i>
+          <span id="labelAudio">Sound On</span>
+        </button>
+        <button id="btnOpenTheory" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-200 transition">
+          <i data-lucide="book-open" class="w-3.5 h-3.5 text-slate-600"></i>
+          <span>Should-Know Concepts</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- 4 KPI SUMMARY CARDS -->
+    <div class="max-w-[1640px] mx-auto px-4 sm:px-6 pb-3 grid grid-cols-2 lg:grid-cols-4 gap-3">
+      <div class="bg-slate-50/80 border border-slate-200/90 rounded-lg px-3.5 py-2 flex items-center justify-between">
+        <div>
+          <div class="text-[11px] font-medium text-slate-500 uppercase tracking-wider">E-Waste Routed</div>
+          <div class="flex items-baseline gap-1.5 mt-0.5 tabular">
+            <span id="kpiRoutedKg" class="text-lg font-bold font-mono text-slate-900">0</span>
+            <span id="kpiTargetKg" class="text-xs font-mono text-slate-500">/ 30 kg</span>
+          </div>
+        </div>
+        <span class="p-2 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200/70">
+          <i data-lucide="package-check" class="w-4 h-4"></i>
+        </span>
+      </div>
+
+      <div class="bg-slate-50/80 border border-slate-200/90 rounded-lg px-3.5 py-2 flex items-center justify-between">
+        <div>
+          <div class="text-[11px] font-medium text-slate-500 uppercase tracking-wider">Total Travel Distance</div>
+          <div class="flex items-baseline gap-1.5 mt-0.5 tabular">
+            <span id="kpiTotalKm" class="text-lg font-bold font-mono text-slate-900">0</span>
+            <span class="text-xs font-mono text-slate-500">km</span>
+          </div>
+        </div>
+        <span class="p-2 rounded-md bg-sky-50 text-sky-700 border border-sky-200/70">
+          <i data-lucide="navigation" class="w-4 h-4"></i>
+        </span>
+      </div>
+
+      <div class="bg-slate-50/80 border border-slate-200/90 rounded-lg px-3.5 py-2 flex items-center justify-between">
+        <div>
+          <div class="text-[11px] font-medium text-slate-500 uppercase tracking-wider">Dispatch Status</div>
+          <div class="flex items-center gap-2 mt-0.5 tabular">
+            <span id="kpiDispatchCount" class="text-sm font-bold font-mono text-slate-900">0 / 3 Assigned</span>
+            <span id="kpiOverflowPill" class="hidden text-[10px] font-mono font-semibold px-1.5 py-0.5 rounded bg-rose-50 text-rose-700 border border-rose-200">
+              Overflow
+            </span>
+          </div>
+        </div>
+        <span class="p-2 rounded-md bg-amber-50 text-amber-700 border border-amber-200/70">
+          <i data-lucide="car" class="w-4 h-4"></i>
+        </span>
+      </div>
+
+      <div class="bg-slate-50/80 border border-slate-200/90 rounded-lg px-3.5 py-2 flex items-center justify-between">
+        <div class="overflow-hidden">
+          <div class="flex items-center gap-1.5">
+            <span id="kpiStepTag" class="text-[10px] font-mono font-semibold px-1.5 py-0.5 rounded bg-slate-200/80 text-slate-700">
+              STEP 0 / 7
+            </span>
+            <span class="text-[11px] font-medium text-slate-500 uppercase tracking-wider">Stage</span>
+          </div>
+          <p id="kpiBannerText" class="text-xs font-semibold text-slate-900 truncate mt-1">
+            Step 0: Weighted Graph & Capacities Ready
+          </p>
+        </div>
+        <span class="p-2 rounded-md bg-slate-100 text-slate-700 border border-slate-200 shrink-0">
+          <i data-lucide="cpu" class="w-4 h-4"></i>
+        </span>
+      </div>
+    </div>
+  </header>
+
+  <!-- MAP-FIRST WORKSPACE (CONTROLS & INSPECTOR LEFT, NETWORK MAP RIGHT) -->
+  <main class="max-w-[1640px] w-full mx-auto px-4 sm:px-6 py-4 flex-1 grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
+
+    <!-- LEFT WORKSPACE: CONTROLS & TABBED ALGORITHM INSPECTOR (4 cols) -->
+    <aside class="lg:col-span-4 flex flex-col gap-4">
+
+      <!-- Playback & Scenario Controls -->
+      <div class="bg-white border border-slate-200 rounded-xl p-4 shadow-sm space-y-3">
+        <div class="flex items-center justify-between">
+          <h2 class="text-xs font-bold uppercase tracking-wider text-slate-700">Simulation Controls</h2>
+          <span id="speedReadout" class="text-xs font-mono font-semibold text-slate-600 bg-slate-100 px-2 py-0.5 rounded">1.0× Speed</span>
+        </div>
+
+        <div class="grid grid-cols-12 gap-2">
+          <button id="btnPlayPause" class="col-span-6 py-2 px-3 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold flex items-center justify-center gap-1.5 transition">
+            <i id="iconPlayPause" data-lucide="play" class="w-3.5 h-3.5 fill-current"></i>
+            <span id="labelPlayPause">Play Simulation</span>
+          </button>
+          <button id="btnPrevStep" class="col-span-2 py-2 px-2 rounded-lg bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 text-xs font-semibold flex items-center justify-center disabled:opacity-40" title="Previous Step">
+            <i data-lucide="skip-back" class="w-3.5 h-3.5"></i>
+          </button>
+          <button id="btnNextStep" class="col-span-2 py-2 px-2 rounded-lg bg-sky-600 hover:bg-sky-700 text-white text-xs font-semibold flex items-center justify-center disabled:opacity-40" title="Next Step">
+            <i data-lucide="skip-forward" class="w-3.5 h-3.5"></i>
+          </button>
+          <button id="btnResetSim" class="col-span-2 py-2 px-2 rounded-lg bg-white hover:bg-rose-50 hover:text-rose-700 hover:border-rose-300 text-slate-700 border border-slate-300 text-xs font-semibold flex items-center justify-center" title="Reset">
+            <i data-lucide="rotate-ccw" class="w-3.5 h-3.5"></i>
+          </button>
+        </div>
+
+        <div class="flex items-center gap-3 pt-1">
+          <span class="text-[11px] font-mono text-slate-500">Speed</span>
+          <div class="grid grid-cols-3 gap-1.5 flex-1">
+            <button data-speed="0.5" class="speed-pill py-1 rounded text-[11px] font-mono font-medium border border-slate-200 text-slate-600 hover:bg-slate-50">0.5×</button>
+            <button data-speed="1" class="speed-pill py-1 rounded text-[11px] font-mono font-semibold border border-slate-900 bg-slate-900 text-white">1.0×</button>
+            <button data-speed="2" class="speed-pill py-1 rounded text-[11px] font-mono font-medium border border-slate-200 text-slate-600 hover:bg-slate-50">2.0×</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tabbed Inspector & Parameters Panel -->
+      <div class="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden flex flex-col">
+        <div class="grid grid-cols-3 border-b border-slate-200 bg-slate-50/70 text-xs font-semibold">
+          <button id="tabBtnInspector" class="py-2.5 px-2 text-slate-900 bg-white border-b-2 border-slate-900 flex items-center justify-center gap-1.5">
+            <i data-lucide="check-square" class="w-3.5 h-3.5 text-emerald-600"></i>
+            <span>Route Inspector</span>
+          </button>
+          <button id="tabBtnParams" class="py-2.5 px-2 text-slate-500 hover:text-slate-800 flex items-center justify-center gap-1.5">
+            <i data-lucide="sliders" class="w-3.5 h-3.5"></i>
+            <span>Scenarios & Data</span>
+          </button>
+          <button id="tabBtnLogs" class="py-2.5 px-2 text-slate-500 hover:text-slate-800 flex items-center justify-center gap-1.5">
+            <i data-lucide="terminal" class="w-3.5 h-3.5"></i>
+            <span>Trace Log</span>
+          </button>
+        </div>
+
+        <!-- TAB 1: ROUTE INSPECTOR -->
+        <div id="tabPaneInspector" class="p-4 space-y-4">
+          <div id="optimalCompareCard" class="hidden p-3 rounded-lg bg-emerald-50/80 border border-emerald-200 space-y-1.5">
+            <div class="flex items-center justify-between">
+              <span class="text-[11px] font-bold uppercase tracking-wider text-emerald-900 flex items-center gap-1">
+                <i data-lucide="scale" class="w-3.5 h-3.5 text-emerald-700"></i>
+                Greedy vs. Exhaustive Optimal
+              </span>
+              <button id="btnCloseOptimalCard" class="text-emerald-700 hover:text-emerald-950">
+                <i data-lucide="x" class="w-3.5 h-3.5"></i>
+              </button>
+            </div>
+            <div id="optimalCompareBody" class="text-xs text-emerald-950 font-mono tabular"></div>
+          </div>
+
+          <!-- Greedy Decision Checklist -->
+          <div>
+            <div class="flex items-center justify-between mb-2">
+              <h3 class="text-xs font-bold uppercase tracking-wider text-slate-700">Greedy Candidate Checklist</h3>
+              <span id="checklistNodePill" class="text-[11px] font-mono px-2 py-0.5 rounded bg-slate-100 text-slate-600 border border-slate-200">
+                Idle
+              </span>
+            </div>
+            <div id="greedyChecklistBox" class="space-y-2 text-xs"></div>
+          </div>
+
+          <!-- Dijkstra Shortest-Path Table -->
+          <div class="pt-2 border-t border-slate-100">
+            <div class="flex items-center justify-between mb-2">
+              <h3 class="text-xs font-bold uppercase tracking-wider text-slate-700">Dijkstra Shortest-Path Table</h3>
+              <span class="text-[11px] font-mono text-indigo-600">Hover path to preview</span>
+            </div>
+            <div class="overflow-x-auto border border-slate-200 rounded-lg">
+              <table class="w-full text-left border-collapse text-xs font-mono tabular">
+                <thead class="bg-slate-50 border-b border-slate-200 text-[10px] text-slate-500 uppercase">
+                  <tr>
+                    <th class="py-1.5 px-2.5">Source</th>
+                    <th class="py-1.5 px-2.5">To R1 (Bat)</th>
+                    <th class="py-1.5 px-2.5">To R2 (Bat+Comp)</th>
+                  </tr>
+                </thead>
+                <tbody id="dijkstraTableBody" class="divide-y divide-slate-100"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Dijkstra Priority Queue Strip -->
+          <div class="pt-2 border-t border-slate-100">
+            <div class="flex items-center justify-between mb-1.5">
+              <h3 class="text-[11px] font-bold uppercase tracking-wider text-slate-600">Dijkstra Min-Heap Queue</h3>
+              <span class="text-[10px] font-mono text-slate-400">Extract-Min Order</span>
+            </div>
+            <div id="pqTraceBox" class="flex items-center gap-1.5 flex-wrap font-mono text-[11px] bg-slate-50 border border-slate-200 rounded-lg p-2 min-h-[34px]">
+              <span class="text-slate-400">Step to view Priority Queue pops...</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- TAB 2: SCENARIOS & LIVE PARAMETERS -->
+        <div id="tabPaneParams" class="hidden p-4 space-y-4 max-h-[540px] overflow-y-auto">
+          <div class="space-y-2">
+            <h3 class="text-xs font-bold uppercase tracking-wider text-slate-700">Preset Scenarios</h3>
+            <button id="btnPresetDefault" class="w-full text-left p-2.5 rounded-lg border border-slate-200 hover:border-slate-400 bg-slate-50/70 transition">
+              <div class="flex items-center justify-between">
+                <span class="text-xs font-bold text-slate-900">1. Worked Example (Standard)</span>
+                <span class="text-[11px] font-mono font-semibold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">8 km</span>
+              </div>
+              <p class="text-[11px] text-slate-500 mt-0.5">A: 10kg Bat → R1 (3km) | B: 15kg Comp → R2 (2km) | C: 5kg Bat → R2 (3km)</p>
+            </button>
+
+            <button id="btnPresetFallback" class="w-full text-left p-2.5 rounded-lg border border-slate-200 hover:border-amber-400 bg-amber-50/40 transition">
+              <div class="flex items-center justify-between">
+                <span class="text-xs font-bold text-slate-900">2. Capacity Overload Fallback</span>
+                <span class="text-[11px] font-mono font-semibold text-amber-800 bg-amber-100/80 px-1.5 py-0.5 rounded border border-amber-200">10 km</span>
+              </div>
+              <p class="text-[11px] text-slate-500 mt-0.5">C raised to 12kg Bat. Nearest R2 has 10kg left → Greedy falls back to R1 (5km).</p>
+            </button>
+
+            <button id="btnPresetExhaust" class="w-full text-left p-2.5 rounded-lg border border-slate-200 hover:border-rose-400 bg-rose-50/40 transition">
+              <div class="flex items-center justify-between">
+                <span class="text-xs font-bold text-slate-900">3. Capacity Exhaustion Case</span>
+                <span class="text-[11px] font-mono font-semibold text-rose-800 bg-rose-100/80 px-1.5 py-0.5 rounded border border-rose-200">Overflow</span>
+              </div>
+              <p class="text-[11px] text-slate-500 mt-0.5">Large loads fill R1 & R2 early, leaving Pickup C unallocated.</p>
+            </button>
+          </div>
+
+          <div class="space-y-2.5 pt-2 border-t border-slate-100 text-xs">
+            <div class="flex items-center justify-between">
+              <h3 class="text-xs font-bold uppercase tracking-wider text-slate-700">Live Node & Facility Inputs</h3>
+            </div>
+
+            <!-- Greedy Processing Order Selector -->
+            <div class="p-2.5 rounded-lg border border-slate-200 bg-slate-50/60 flex items-center justify-between gap-2">
+              <span class="font-semibold text-slate-700">Greedy Dispatch Order</span>
+              <select id="selGreedyOrder" class="bg-white text-[11px] font-mono font-medium border border-slate-300 rounded px-2 py-1 text-slate-800">
+                <option value="default" selected>Default (A → B → C)</option>
+                <option value="heaviest">Heaviest Batch First</option>
+              </select>
+            </div>
+
+            <div id="dynamicPickupsSliders" class="space-y-2"></div>
+
+            <div class="p-2.5 rounded-lg border border-slate-200 bg-slate-50/60 space-y-2.5">
+              <div>
+                <div class="flex items-center justify-between mb-1">
+                  <span class="font-semibold text-slate-800">Centre R1 Capacity</span>
+                  <span id="lblCapR1" class="font-mono font-semibold text-emerald-700 tabular">20 kg</span>
+                </div>
+                <input id="rngCapR1" type="range" min="5" max="45" value="20" class="w-full" />
+                <div class="flex items-center gap-3 mt-1.5 text-[11px] text-slate-600">
+                  <label class="inline-flex items-center gap-1 cursor-pointer">
+                    <input id="chkR1Bat" type="checkbox" checked class="rounded border-slate-300 text-slate-900" />
+                    <span>Batteries</span>
+                  </label>
+                  <label class="inline-flex items-center gap-1 cursor-pointer">
+                    <input id="chkR1Comp" type="checkbox" class="rounded border-slate-300 text-slate-900" />
+                    <span>Computers</span>
+                  </label>
+                </div>
+              </div>
+              <div class="pt-2 border-t border-slate-200/70">
+                <div class="flex items-center justify-between mb-1">
+                  <span class="font-semibold text-slate-800">Centre R2 Capacity</span>
+                  <span id="lblCapR2" class="font-mono font-semibold text-sky-700 tabular">25 kg</span>
+                </div>
+                <input id="rngCapR2" type="range" min="5" max="45" value="25" class="w-full" />
+                <div class="flex items-center gap-3 mt-1.5 text-[11px] text-slate-600">
+                  <label class="inline-flex items-center gap-1 cursor-pointer">
+                    <input id="chkR2Bat" type="checkbox" checked class="rounded border-slate-300 text-slate-900" />
+                    <span>Batteries</span>
+                  </label>
+                  <label class="inline-flex items-center gap-1 cursor-pointer">
+                    <input id="chkR2Comp" type="checkbox" checked class="rounded border-slate-300 text-slate-900" />
+                    <span>Computers</span>
+                  </label>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- TAB 3: TRACE LOG -->
+        <div id="tabPaneLogs" class="hidden p-4 flex flex-col">
+          <div class="flex items-center justify-between mb-2">
+            <h3 class="text-xs font-bold uppercase tracking-wider text-slate-700">Algorithm Execution Trace</h3>
+            <button id="btnClearTrace" class="text-[11px] font-mono text-slate-500 hover:text-slate-900">Clear</button>
+          </div>
+          <div id="traceConsole" class="bg-slate-50 border border-slate-200 rounded-lg p-3 font-mono text-[11px] space-y-2 h-[420px] overflow-y-auto"></div>
+        </div>
+      </div>
+
+    </aside>
+
+    <!-- LARGE INTERACTIVE CITY NETWORK MAP (RIGHT SIDE - 8 cols) -->
+    <section id="mapCardContainer" class="lg:col-span-8 bg-white border border-slate-200 rounded-xl p-4 shadow-sm flex flex-col transition-all">
+      <div class="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-slate-100">
+        <div>
+          <div class="flex items-center gap-2">
+            <h2 class="text-sm font-bold text-slate-900">City Road Network Topology</h2>
+            <span id="graphSizeBadge" class="text-[11px] font-mono text-slate-500 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
+              G = (V: 8, E: 11)
+            </span>
+          </div>
+          <p id="mapHelperHint" class="text-xs text-slate-500 mt-0.5">
+            Drag any node smoothly, click a pickup source to inspect its Dijkstra tree, or click a km pill to edit road distance.
+          </p>
+        </div>
+
+        <div class="flex items-center gap-2 flex-wrap">
+          <span class="inline-flex items-center gap-1.5 text-[11px] font-medium px-2 py-1 rounded-md bg-amber-50 text-amber-800 border border-amber-200/80">
+            <span class="w-2 h-2 rounded-full bg-amber-500"></span> Batteries
+          </span>
+          <span class="inline-flex items-center gap-1.5 text-[11px] font-medium px-2 py-1 rounded-md bg-violet-50 text-violet-800 border border-violet-200/80">
+            <span class="w-2 h-2 rounded-full bg-violet-500"></span> Computers
+          </span>
+          <span class="inline-flex items-center gap-1.5 text-[11px] font-medium px-2 py-1 rounded-md bg-emerald-50 text-emerald-800 border border-emerald-200/80">
+            <span class="w-2 h-2 rounded-full bg-emerald-600"></span> Assigned Route
+          </span>
+
+          <button id="btnExpandMap" class="ml-1 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-200 transition">
+            <i id="iconExpandMap" data-lucide="maximize-2" class="w-3.5 h-3.5"></i>
+            <span id="textExpandMap">Expand Map</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Large SVG Canvas Area -->
+      <div id="canvasWrapper" class="relative w-full h-[540px] lg:h-[600px] mt-3 rounded-lg bg-[#FAFBFD] border border-slate-200 overflow-hidden select-none">
+        <div class="absolute inset-0 pointer-events-none opacity-60"
+             style="background-image: radial-gradient(#CBD5E1 1px, transparent 1px); background-size: 24px 24px;"></div>
+
+        <!-- Graph Builder Mode Toolbar (Top-Left) -->
+        <div id="builderToolbar" class="absolute top-3 left-3 z-20 flex items-center gap-1.5 bg-white/95 backdrop-blur border border-slate-200 rounded-lg p-1 shadow-sm">
+          <button id="modeSelectBtn" class="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-semibold bg-slate-900 text-white transition">
+            <i data-lucide="mouse-pointer" class="w-3 h-3"></i>
+            <span>Move / Inspect</span>
+          </button>
+          <button id="modeAddNodeBtn" class="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-semibold text-slate-600 hover:bg-slate-100 transition">
+            <i data-lucide="plus-circle" class="w-3 h-3 text-amber-600"></i>
+            <span>+ Add Pickup</span>
+          </button>
+          <button id="modeAddEdgeBtn" class="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-semibold text-slate-600 hover:bg-slate-100 transition">
+            <i data-lucide="git-branch-plus" class="w-3 h-3 text-sky-600"></i>
+            <span>+ Connect Road</span>
+          </button>
+        </div>
+
+        <!-- Inline Road Distance Editor Popover -->
+        <div id="edgePopover" class="hidden absolute z-30 bg-white border border-slate-300 rounded-xl shadow-xl p-3 w-56 space-y-2.5">
+          <div class="flex items-center justify-between text-xs font-semibold text-slate-800">
+            <span id="edgePopoverTitle">Road A ↔ J1</span>
+            <button id="btnClosePopover" class="text-slate-400 hover:text-slate-700">
+              <i data-lucide="x" class="w-3.5 h-3.5"></i>
+            </button>
+          </div>
+          <div class="flex items-center gap-1.5">
+            <input id="edgeWeightInput" type="number" min="1" max="50" class="w-full px-2 py-1 text-xs font-mono border border-slate-300 rounded focus:outline-none focus:border-slate-900" />
+            <span class="text-xs font-mono text-slate-500">km</span>
+            <button id="btnSaveEdgeWeight" class="px-2.5 py-1 rounded bg-slate-900 text-white text-xs font-semibold hover:bg-slate-800">
+              Set
+            </button>
+          </div>
+          <button id="btnToggleTraffic" class="w-full py-1.5 px-2.5 rounded-lg text-[11px] font-semibold flex items-center justify-center gap-1.5 border transition">
+            <i data-lucide="alert-triangle" class="w-3.5 h-3.5"></i>
+            <span id="labelTrafficBtn">Simulate Traffic (2× km)</span>
+          </button>
+          <button id="btnDeleteEdge" class="hidden w-full py-1.5 px-2.5 rounded-lg text-[11px] font-semibold flex items-center justify-center gap-1.5 border border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100 transition">
+            <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+            <span>Remove Custom Road</span>
+          </button>
+        </div>
+
+        <!-- Zoom & Fit Floating Controls -->
+        <div id="zoomToolbar" class="absolute bottom-3 right-3 z-20 flex items-center gap-1 bg-white/95 backdrop-blur border border-slate-200 rounded-lg p-1 shadow-sm">
+          <button id="btnZoomIn" class="p-1.5 rounded hover:bg-slate-100 text-slate-700" title="Zoom In">
+            <i data-lucide="zoom-in" class="w-4 h-4"></i>
+          </button>
+          <button id="btnZoomOut" class="p-1.5 rounded hover:bg-slate-100 text-slate-700" title="Zoom Out">
+            <i data-lucide="zoom-out" class="w-4 h-4"></i>
+          </button>
+          <button id="btnZoomFit" class="px-2 py-1 rounded hover:bg-slate-100 text-[11px] font-mono font-semibold text-slate-700" title="Reset View">
+            Fit
+          </button>
+        </div>
+
+        <!-- SVG Network -->
+        <svg id="networkSvg" viewBox="0 0 880 560" preserveAspectRatio="xMidYMid meet" class="w-full h-full">
+          <defs>
+            <marker id="arrowEmerald" viewBox="0 0 10 10" refX="26" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+              <path d="M 0 1.5 L 8 5 L 0 8.5 z" fill="#059669" />
+            </marker>
+            <filter id="headlightGlow" x="-40%" y="-40%" width="180%" height="180%">
+              <feGaussianBlur stdDeviation="2.5" result="blur" />
+              <feMerge>
+                <feMergeNode in="blur" />
+                <feMergeNode in="SourceGraphic" />
+              </feMerge>
+            </filter>
+          </defs>
+
+          <g id="viewportGroup">
+            <!-- Subtle Urban Topography Backdrop Layer -->
+            <g id="cityBackdropLayer" pointer-events="none">
+              <!-- Zoning Districts -->
+              <rect x="35" y="55" width="165" height="475" rx="18" fill="#F1F5F9" opacity="0.65" />
+              <rect x="655" y="55" width="195" height="475" rx="18" fill="#ECFDF5" opacity="0.55" />
+              <!-- Green Civic Park Zones -->
+              <rect x="255" y="65" width="120" height="75" rx="14" fill="#DCFCE7" opacity="0.45" />
+              <rect x="495" y="425" width="130" height="85" rx="14" fill="#DCFCE7" opacity="0.45" />
+              <!-- Scenic River / Canal Curve -->
+              <path d="M 275 0 C 310 150, 235 340, 295 560" fill="none" stroke="#E0F2FE" stroke-width="26" stroke-linecap="round" opacity="0.85" />
+              <path d="M 275 0 C 310 150, 235 340, 295 560" fill="none" stroke="#BAE6FD" stroke-width="2" stroke-dasharray="10 8" opacity="0.7" />
+              <!-- Subtle City Block Outlines -->
+              <rect x="365" y="185" width="60" height="35" rx="6" fill="none" stroke="#E2E8F0" stroke-width="1" />
+              <rect x="465" y="175" width="75" height="42" rx="6" fill="none" stroke="#E2E8F0" stroke-width="1" />
+              <rect x="360" y="345" width="65" height="38" rx="6" fill="none" stroke="#E2E8F0" stroke-width="1" />
+            </g>
+
+            <text x="115" y="34" fill="#64748B" font-size="11" font-family="JetBrains Mono" font-weight="600" text-anchor="middle" letter-spacing="0.06em">PICKUP SOURCES</text>
+            <text x="440" y="34" fill="#64748B" font-size="11" font-family="JetBrains Mono" font-weight="600" text-anchor="middle" letter-spacing="0.06em">TRANSIT JUNCTIONS</text>
+            <text x="755" y="34" fill="#64748B" font-size="11" font-family="JetBrains Mono" font-weight="600" text-anchor="middle" letter-spacing="0.06em">RECYCLING CENTRES</text>
+
+            <g id="roadBedsLayer"></g>
+            <g id="edgesLayer"></g>
+            <g id="wavefrontLayer"></g>
+            <g id="tripBadgesLayer"></g>
+            <g id="edgePillsLayer"></g>
+            <g id="nodesLayer"></g>
+            <g id="effectsLayer"></g>
+            <!-- Precision Crosshair Guide Lines -->
+            <g id="cursorGuidesLayer" class="hidden" pointer-events="none">
+              <line id="guideLineX" x1="0" y1="0" x2="880" y2="0" stroke="#94A3B8" stroke-width="0.75" stroke-dasharray="3 4" opacity="0.55" />
+              <line id="guideLineY" x1="0" y1="0" x2="0" y2="560" stroke="#94A3B8" stroke-width="0.75" stroke-dasharray="3 4" opacity="0.55" />
+            </g>
+
+            <!-- High-Detail Top-Down Matte-Black Supercar Vector (Scaled up & unmistakably a car) -->
+            <g id="vehicleMarker" class="hidden">
+              <!-- Ground drop shadow -->
+              <ellipse cx="0" cy="3" rx="30" ry="15" fill="rgba(15, 23, 42, 0.25)" />
+              <!-- Subtle Headlight Beam Cones -->
+              <polygon points="24,-8 54,-17 54,-3 24,-4" fill="rgba(56, 189, 248, 0.22)" />
+              <polygon points="24,8 54,17 54,3 24,4" fill="rgba(56, 189, 248, 0.22)" />
+
+              <!-- 4 Prominent Tires with Silver Alloy Rims -->
+              <rect x="-21" y="-15.5" width="11" height="4.5" rx="2" fill="#0F172A" stroke="#475569" stroke-width="0.8" />
+              <rect x="-21" y="11" width="11" height="4.5" rx="2" fill="#0F172A" stroke="#475569" stroke-width="0.8" />
+              <rect x="10" y="-15.5" width="11" height="4.5" rx="2" fill="#0F172A" stroke="#475569" stroke-width="0.8" />
+              <rect x="10" y="11" width="11" height="4.5" rx="2" fill="#0F172A" stroke="#475569" stroke-width="0.8" />
+
+              <!-- Aerodynamic Side Mirrors -->
+              <polygon points="4,-12.5 8,-16 10,-15.5 7,-12" fill="#1E293B" stroke="#090D16" stroke-width="0.7" />
+              <polygon points="4,12.5 8,16 10,15.5 7,12" fill="#1E293B" stroke="#090D16" stroke-width="0.7" />
+
+              <!-- Widebody Matte-Black Supercar Chassis -->
+              <path d="M -27,-10 L -21,-13.5 L -8,-13.5 L -3,-12 L 6,-12 L 11,-13.5 L 22,-12.5 L 28,-7.5 L 30,0 L 28,7.5 L 22,12.5 L 11,13.5 L 6,12 L -3,12 L -8,13.5 L -21,13.5 L -27,10 Z"
+                    fill="#18181B" stroke="#09090B" stroke-width="1.3" stroke-linejoin="round" />
+
+              <!-- Carbon-Fiber Rear Wing Spoiler -->
+              <rect x="-28.5" y="-12.5" width="4" height="25" rx="1.5" fill="#09090B" stroke="#52525B" stroke-width="0.8" />
+
+              <!-- Rear Engine Louvers (V10/V12 Glass Bay) -->
+              <polygon points="-21,-7.5 -9,-7.5 -7,-5.5 -7,5.5 -9,7.5 -21,7.5" fill="#27272A" stroke="#52525B" stroke-width="0.8" />
+              <line x1="-18" y1="-6" x2="-18" y2="6" stroke="#71717A" stroke-width="0.9" />
+              <line x1="-14.5" y1="-6" x2="-14.5" y2="6" stroke="#71717A" stroke-width="0.9" />
+              <line x1="-11" y1="-6" x2="-11" y2="6" stroke="#71717A" stroke-width="0.9" />
+
+              <!-- Tinted Panoramic Cockpit & Windshield -->
+              <path d="M -6,-7.5 L 5,-8.5 L 13,-6 L 13,6 L 5,8.5 L -6,7.5 Z" fill="#0F172A" stroke="#38BDF8" stroke-width="0.8" />
+              <!-- Windshield Glass Reflection -->
+              <polygon points="4,-6.5 11,-4.5 11,0 4,-1.5" fill="rgba(224, 242, 254, 0.35)" />
+
+              <!-- Sculpted Front Hood Creases & Gold Crest -->
+              <line x1="13" y1="-5.5" x2="26" y2="-4" stroke="#3F3F46" stroke-width="1" />
+              <line x1="13" y1="5.5" x2="26" y2="4" stroke="#3F3F46" stroke-width="1" />
+              <polygon points="19,-1.8 22.5,-1.8 23.2,0 22.5,1.8 19,1.8" fill="#F59E0B" />
+
+              <!-- Signature Y-Shaped LED Headlights -->
+              <polyline points="20,-9.5 25.5,-7.5 22,-5.5" fill="none" stroke="#FFFFFF" stroke-width="1.8" stroke-linecap="round" filter="url(#headlightGlow)" />
+              <polyline points="20,9.5 25.5,7.5 22,5.5" fill="none" stroke="#FFFFFF" stroke-width="1.8" stroke-linecap="round" filter="url(#headlightGlow)" />
+
+              <!-- Crisp Red LED Taillights -->
+              <line x1="-27" y1="-9" x2="-27" y2="-4" stroke="#EF4444" stroke-width="2" stroke-linecap="round" />
+              <line x1="-27" y1="4" x2="-27" y2="9" stroke="#EF4444" stroke-width="2" stroke-linecap="round" />
+            </g>
+          </g>
+        </svg>
+
+        <!-- Custom High-Precision Studio Pointer Overlay -->
+        <div id="customMapPointer" class="opacity-0 fixed top-0 left-0 z-40">
+          <div class="relative -translate-x-1/2 -translate-y-1/2 flex items-center justify-center">
+            <svg id="pointerSvg" width="44" height="44" viewBox="0 0 44 44" class="overflow-visible drop-shadow-sm">
+              <!-- Outer Rotating Precision Reticle -->
+              <circle id="pointerOuterRing" cx="22" cy="22" r="15" fill="none" stroke="#0F172A" stroke-width="1.25" stroke-dasharray="5 3" opacity="0.7" class="reticle-ring-spin" />
+              <!-- Inner Focus Halo -->
+              <circle id="pointerInnerHalo" cx="22" cy="22" r="7" fill="rgba(15, 23, 42, 0.06)" stroke="#0F172A" stroke-width="1.2" />
+              <!-- Precision Crosshair Ticks -->
+              <line x1="22" y1="2" x2="22" y2="8" stroke="#0F172A" stroke-width="1.4" stroke-linecap="round" />
+              <line x1="22" y1="36" x2="22" y2="42" stroke="#0F172A" stroke-width="1.4" stroke-linecap="round" />
+              <line x1="2" y1="22" x2="8" y2="22" stroke="#0F172A" stroke-width="1.4" stroke-linecap="round" />
+              <line x1="36" y1="22" x2="42" y2="22" stroke="#0F172A" stroke-width="1.4" stroke-linecap="round" />
+              <!-- Center Pinpoint Dot -->
+              <circle id="pointerCoreDot" cx="22" cy="22" r="2.4" fill="#0F172A" />
+            </svg>
+            <!-- Floating Mode & Coordinate Telemetry Pill -->
+            <div id="pointerHudPill" class="absolute left-7 top-5 whitespace-nowrap px-2 py-0.5 rounded-md bg-slate-900/95 text-white font-mono text-[10px] font-semibold shadow-md border border-slate-700/80 flex items-center gap-1.5">
+              <span id="pointerModeDot" class="w-1.5 h-1.5 rounded-full bg-sky-400"></span>
+              <span id="pointerModeText">INSPECT</span>
+              <span id="pointerCoordText" class="text-slate-400 font-normal">0, 0</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Narrative Explanation Strip -->
+      <div class="mt-3 p-3.5 rounded-lg bg-slate-50 border border-slate-200/90 flex items-start gap-3">
+        <span class="p-2 rounded-md bg-white text-sky-700 border border-slate-200 shrink-0 mt-0.5">
+          <i data-lucide="info" class="w-4 h-4"></i>
+        </span>
+        <div class="text-xs leading-relaxed">
+          <div id="narrativeHeadline" class="font-bold text-slate-900">Step 0: Weighted City Graph Initialised</div>
+          <p id="narrativeBody" class="text-slate-600 mt-0.5">
+            Pickup loads A, B, and C are queued. Press <strong class="text-slate-900">Play Simulation</strong> or <strong class="text-slate-900">Step</strong> to compute shortest paths via Dijkstra's algorithm and watch the Greedy allocator assign centres.
+          </p>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- KEY CONCEPTS & SHOULD-KNOW NOTES MODAL -->
+  <div id="theoryModal" class="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-xs hidden items-center justify-center p-4">
+    <div class="bg-white border border-slate-200 rounded-xl max-w-2xl w-full p-6 shadow-xl space-y-4 max-h-[90vh] overflow-y-auto">
+      <div class="flex items-center justify-between border-b border-slate-200 pb-3">
+        <div>
+          <h3 class="text-base font-bold text-slate-900">Key Concepts & Should-Know Notes</h3>
+          <p class="text-xs text-slate-500">Essential algorithmic principles, complexity bounds, and routing trade-offs to know</p>
+        </div>
+        <button id="btnCloseTheory" class="p-1.5 rounded-lg text-slate-500 hover:bg-slate-100">
+          <i data-lucide="x" class="w-4 h-4"></i>
+        </button>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs leading-relaxed">
+        <div class="p-3.5 rounded-lg bg-slate-50 border border-slate-200 space-y-1">
+          <h4 class="font-bold text-slate-900">1. Graph Modeling (What to Know)</h4>
+          <p class="text-slate-600">
+            Represented as a weighted undirected graph <code class="font-mono text-slate-900">G = (V, E)</code> via an <strong>Adjacency List</strong> with vertices (pickup points, road junctions, recycling centres) and non-negative road segments.
+          </p>
+        </div>
+        <div class="p-3.5 rounded-lg bg-slate-50 border border-slate-200 space-y-1">
+          <h4 class="font-bold text-slate-900">2. Asymptotic Complexity (Should Know)</h4>
+          <ul class="text-slate-600 list-disc list-inside space-y-0.5">
+            <li><strong>Dijkstra's Algorithm:</strong> <code class="font-mono text-slate-900">O((V + E) log V)</code> per pickup node using a Min-Heap Priority Queue.</li>
+            <li><strong>Greedy Allocation:</strong> <code class="font-mono text-slate-900">O(N · M log M)</code> to sort M candidate centres for N pickup batches.</li>
+            <li><strong>Space Complexity:</strong> <code class="font-mono text-slate-900">O(V + E)</code> for adjacency lists and distance tables.</li>
+          </ul>
+        </div>
+        <div class="md:col-span-2 p-3.5 rounded-lg bg-amber-50/70 border border-amber-200 space-y-1">
+          <h4 class="font-bold text-amber-950">3. Good to Know: Local vs. Global Optimality Trade-Off</h4>
+          <p class="text-amber-900">
+            <strong>Does Greedy allocation always yield the global minimum travel distance?</strong> No. While Dijkstra guarantees the exact shortest path between any two intersections, Greedy allocation commits locally optimal choices sequentially (<code class="font-mono">A → B → C</code>). If an early pickup fills a shared facility like R2, a subsequent nearby pickup may be forced onto a longer detour to R1. Use the <strong>Compare vs. Global Optimal</strong> button in the top bar to compare both approaches live.
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- APPLICATION SCRIPT -->
+  <script>
+    /**********************************************************************
+     * 1. GRAPH & STATE CONFIGURATION
+     **********************************************************************/
+    const INITIAL_NODES = {
+      A:  { id: 'A',  kind: 'pickup',   x: 115, y: 120 },
+      B:  { id: 'B',  kind: 'pickup',   x: 115, y: 285 },
+      C:  { id: 'C',  kind: 'pickup',   x: 115, y: 450 },
+      J1: { id: 'J1', kind: 'junction', x: 440, y: 120 },
+      J2: { id: 'J2', kind: 'junction', x: 440, y: 285 },
+      J3: { id: 'J3', kind: 'junction', x: 440, y: 450 },
+      R1: { id: 'R1', kind: 'facility', x: 755, y: 185 },
+      R2: { id: 'R2', kind: 'facility', x: 755, y: 385 }
+    };
+
+    const INITIAL_EDGES = [
+      { id: 'e_A_J1',  u: 'A',  v: 'J1', weight: 1 },
+      { id: 'e_J1_R1', u: 'J1', v: 'R1', weight: 2 },
+      { id: 'e_A_J2',  u: 'A',  v: 'J2', weight: 4 },
+      { id: 'e_J2_R2', u: 'J2', v: 'R2', weight: 2 },
+      { id: 'e_B_J1',  u: 'B',  v: 'J1', weight: 2 },
+      { id: 'e_B_R2',  u: 'B',  v: 'R2', weight: 2 },
+      { id: 'e_C_J3',  u: 'C',  v: 'J3', weight: 2 },
+      { id: 'e_J3_R1', u: 'J3', v: 'R1', weight: 3 },
+      { id: 'e_C_J2',  u: 'C',  v: 'J2', weight: 1 },
+      { id: 'e_A_R2',  u: 'A',  v: 'R2', weight: 8, scenic: true },
+      { id: 'e_B_J3',  u: 'B',  v: 'J3', weight: 4, scenic: true }
+    ];
+
+    let NODES = JSON.parse(JSON.stringify(INITIAL_NODES));
+    let edges = JSON.parse(JSON.stringify(INITIAL_EDGES));
+    let pickups = {
+      A: { weight: 10, type: 'Batteries' },
+      B: { weight: 15, type: 'Computers' },
+      C: { weight: 5,  type: 'Batteries' }
+    };
+    const facilities = {
+      R1: { maxCap: 20, accepted: ['Batteries'] },
+      R2: { maxCap: 25, accepted: ['Batteries', 'Computers'] }
+    };
+
+    let steps = [];
+    let currentStep = 0;
+    let playTimer = null;
+    let simSpeed = 1.0;
+    let vehicleRaf = null;
+    let editingEdgeId = null;
+
+    // Interactive Canvas & Builder States
+    let viewState = { scale: 1, tx: 0, ty: 0 };
+    let draggingNodeId = null;
+    let dragOffset = { dx: 0, dy: 0 };
+    let dragMoved = false;
+    let dragRafPending = false;
+    let panningCanvas = false;
+    let panStart = { x: 0, y: 0 };
+    let inspectedSourceId = null;
+    let canvasMode = 'select'; // 'select' | 'addNode' | 'addEdge'
+    let pendingEdgeStartNode = null;
+    let audioEnabled = true;
+    let audioCtx = null;
+    let hoverPreviewEdges = new Set();
+    let displayedKpi = { routedKg: 0, totalKm: 0 };
+    let greedyOrderMode = 'default'; // 'default' | 'heaviest'
+
+    function getOrderedPickupIds() {
+      const ids = Object.keys(pickups);
+      if (greedyOrderMode === 'heaviest') {
+        return [...ids].sort((a, b) => pickups[b].weight - pickups[a].weight);
+      }
+      return ids;
+    }
+
+    function removeCustomPickupNode(nodeId) {
+      if (['A', 'B', 'C'].includes(nodeId)) return;
+      delete NODES[nodeId];
+      delete pickups[nodeId];
+      edges = edges.filter(e => e.u !== nodeId && e.v !== nodeId);
+      if (inspectedSourceId === nodeId) inspectedSourceId = null;
+      playTone(320, 0.08, 'sine', 0.04);
+      renderDynamicPickupSliders();
+      rebuildTimeline(0);
+    }
+
+    function animateKpiCounter(elementId, fromVal, toVal, duration = 420) {
+      const el = document.getElementById(elementId);
+      if (!el) return;
+      if (fromVal === toVal) {
+        el.textContent = toVal;
+        return;
+      }
+      const start = performance.now();
+      function step(now) {
+        const t = Math.min(1, (now - start) / duration);
+        const eased = 1 - Math.pow(1 - t, 3);
+        el.textContent = Math.round(fromVal + (toVal - fromVal) * eased);
+        if (t < 1) requestAnimationFrame(step);
+        else el.textContent = toVal;
+      }
+      requestAnimationFrame(step);
+    }
+
+    function playTone(freq, duration = 0.08, type = 'sine', vol = 0.04) {
+      if (!audioEnabled) return;
+      try {
+        if (!audioCtx) {
+          audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        }
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = type;
+        osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+        gain.gain.setValueAtTime(vol, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + duration);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start();
+        osc.stop(audioCtx.currentTime + duration);
+      } catch (err) {
+        // Ignore audio errors if blocked by browser autoplay policy
+      }
+    }
+
+    /**********************************************************************
+     * 2. DIJKSTRA'S ALGORITHM & GREEDY / OPTIMAL SOLVERS
+     **********************************************************************/
+    function buildAdjacency() {
+      const adj = {};
+      Object.keys(NODES).forEach(k => { adj[k] = []; });
+      edges.forEach(e => {
+        if (adj[e.u] && adj[e.v]) {
+          adj[e.u].push({ to: e.v, weight: e.weight, edgeId: e.id });
+          adj[e.v].push({ to: e.u, weight: e.weight, edgeId: e.id });
+        }
+      });
+      return adj;
+    }
+
+    function computeDijkstra(sourceId) {
+      const adj = buildAdjacency();
+      const dist = {};
+      const prevNode = {};
+      const prevEdge = {};
+      const scannedEdgeIds = [];
+      const pqHistory = [];
+
+      Object.keys(NODES).forEach(id => {
+        dist[id] = Infinity;
+        prevNode[id] = null;
+        prevEdge[id] = null;
+      });
+      dist[sourceId] = 0;
+
+      const pq = [{ id: sourceId, d: 0 }];
+      const settled = new Set();
+
+      while (pq.length > 0) {
+        pq.sort((a, b) => a.d - b.d);
+        const { id: u, d } = pq.shift();
+        if (settled.has(u)) continue;
+        settled.add(u);
+        pqHistory.push(`${u}:${d}km`);
+
+        for (const edge of (adj[u] || [])) {
+          scannedEdgeIds.push(edge.edgeId);
+          const candidateDist = d + edge.weight;
+          if (candidateDist < dist[edge.to]) {
+            dist[edge.to] = candidateDist;
+            prevNode[edge.to] = u;
+            prevEdge[edge.to] = edge.edgeId;
+            pq.push({ id: edge.to, d: candidateDist });
+          }
+        }
+      }
+
+      const traceTo = (targetId) => {
+        if (dist[targetId] === Infinity) {
+          return { nodes: [], edges: [], distance: Infinity };
+        }
+        const pathNodes = [];
+        const pathEdges = [];
+        let curr = targetId;
+        while (curr !== null) {
+          pathNodes.unshift(curr);
+          if (prevEdge[curr]) pathEdges.unshift(prevEdge[curr]);
+          curr = prevNode[curr];
+        }
+        return { nodes: pathNodes, edges: pathEdges, distance: dist[targetId] };
+      };
+
+      return {
+        dist,
+        scannedEdgeIds: [...new Set(scannedEdgeIds)],
+        pqHistory,
+        R1: traceTo('R1'),
+        R2: traceTo('R2')
+      };
+    }
+
+    function evaluateGreedyCandidates(sourceId, load, dij, rem) {
+      const candidates = ['R1', 'R2'].map(fId => {
+        const fac = facilities[fId];
+        const route = dij[fId];
+        return {
+          id: fId,
+          label: `Centre ${fId}`,
+          distance: route.distance,
+          pathText: route.nodes.join(' → '),
+          typeValid: fac.accepted.includes(load.type),
+          remCap: rem[fId],
+          capValid: rem[fId] >= load.weight
+        };
+      });
+
+      candidates.sort((a, b) => a.distance - b.distance);
+      candidates[0].isNearest = true;
+      candidates[1].isNearest = candidates[1].distance === candidates[0].distance;
+
+      let chosen = null;
+      candidates.forEach(c => {
+        if (!chosen && c.distance < Infinity && c.typeValid && c.capValid) {
+          chosen = c;
+          c.selected = true;
+        } else {
+          c.selected = false;
+        }
+      });
+
+      let summary = '';
+      if (chosen) {
+        summary = `Sorted by shortest path: ${chosen.label} (${chosen.distance} km via ${chosen.pathText}) accepts ${load.type} and has ${chosen.remCap} kg available (≥ ${load.weight} kg).`;
+      } else {
+        summary = `Neither R1 nor R2 satisfies waste compatibility and remaining capacity (${load.weight} kg ${load.type} needed).`;
+      }
+
+      return { sourceId, load, candidates, chosen, summary };
+    }
+
+    function solveGlobalOptimal() {
+      const pickupIds = getOrderedPickupIds();
+      const dijMap = {};
+      pickupIds.forEach(id => { dijMap[id] = computeDijkstra(id); });
+
+      let bestRouted = -1;
+      let bestDist = Infinity;
+
+      function dfs(idx, rem1, rem2, routed, distSum) {
+        if (idx === pickupIds.length) {
+          if (routed > bestRouted || (routed === bestRouted && distSum < bestDist)) {
+            bestRouted = routed;
+            bestDist = distSum;
+          }
+          return;
+        }
+        const id = pickupIds[idx];
+        const load = pickups[id];
+        const d = dijMap[id];
+
+        // Option 1: Route to R1
+        if (facilities.R1.accepted.includes(load.type) && rem1 >= load.weight && d.R1.distance < Infinity) {
+          dfs(idx + 1, rem1 - load.weight, rem2, routed + load.weight, distSum + d.R1.distance);
+        }
+        // Option 2: Route to R2
+        if (facilities.R2.accepted.includes(load.type) && rem2 >= load.weight && d.R2.distance < Infinity) {
+          dfs(idx + 1, rem1, rem2 - load.weight, routed + load.weight, distSum + d.R2.distance);
+        }
+        // Option 3: Skip / Unallocated
+        dfs(idx + 1, rem1, rem2, routed, distSum);
+      }
+
+      dfs(0, facilities.R1.maxCap, facilities.R2.maxCap, 0, 0);
+      return { bestRouted: Math.max(0, bestRouted), bestDist: bestDist === Infinity ? 0 : bestDist };
+    }
+
+    /**********************************************************************
+     * 3. SIMULATION TIMELINE BUILDER
+     **********************************************************************/
+    function buildSimulationTimeline() {
+      const pickupIds = getOrderedPickupIds();
+      const dijMap = {};
+      pickupIds.forEach(id => { dijMap[id] = computeDijkstra(id); });
+
+      const rem = { R1: facilities.R1.maxCap, R2: facilities.R2.maxCap };
+      const storedBreakdown = {
+        R1: { Batteries: 0, Computers: 0 },
+        R2: { Batteries: 0, Computers: 0 }
+      };
+      let routedKg = 0;
+      let totalKm = 0;
+      let assignedCount = 0;
+      let overflowCount = 0;
+      const committedRoutes = [];
+      const traceLines = [];
+
+      const log = (prefix, text, tone = 'slate') => traceLines.push({ prefix, text, tone });
+
+      steps = [];
+      log('INIT', `Graph G(V=${Object.keys(NODES).length}, E=${edges.length}) ready. R1=${rem.R1}kg, R2=${rem.R2}kg.`, 'sky');
+
+      const totalStepsCount = pickupIds.length * 2 + 1;
+
+      steps.push({
+        index: 0,
+        totalSteps: totalStepsCount,
+        banner: 'Step 0: Weighted Graph & Capacities Ready',
+        headline: 'Step 0: City Road Network & Facility Capacities Initialised',
+        body: `Queued ${pickupIds.length} pickup sources (${pickupIds.map(id => `${id}: ${pickups[id].weight}kg ${pickups[id].type}`).join(', ')}).`,
+        remaining: { ...rem },
+        stored: JSON.parse(JSON.stringify(storedBreakdown)),
+        routedKg, totalKm, assignedCount, overflowCount,
+        activeNode: null,
+        scanEdges: [],
+        distances: null,
+        pqHistory: [],
+        routes: [...committedRoutes],
+        truckWaypoints: null,
+        cargoDrop: null,
+        checklist: null,
+        dijMap,
+        trace: [...traceLines]
+      });
+
+      pickupIds.forEach((src, i) => {
+        const load = pickups[src];
+        const dij = dijMap[src];
+        const sDij = i * 2 + 1;
+        const sGrd = i * 2 + 2;
+
+        log(
+          `DIJKSTRA(${src})`,
+          `Shortest paths from ${src}: R1=${dij.R1.distance === Infinity ? '∞' : dij.R1.distance + 'km'} [${dij.R1.nodes.join('→')}], R2=${dij.R2.distance === Infinity ? '∞' : dij.R2.distance + 'km'} [${dij.R2.nodes.join('→')}]`,
+          'sky'
+        );
+
+        steps.push({
+          index: sDij,
+          totalSteps: totalStepsCount,
+          banner: `Step ${sDij}: Computing Dijkstra Shortest Paths from ${src}`,
+          headline: `Step ${sDij}: Dijkstra Relaxation from Pickup ${src} (${load.weight} kg ${load.type})`,
+          body: `Min-Heap Priority Queue explores shortest paths from ${src}: R1 is ${dij.R1.distance === Infinity ? 'unreachable' : dij.R1.distance + ' km'} and R2 is ${dij.R2.distance === Infinity ? 'unreachable' : dij.R2.distance + ' km'}.`,
+          remaining: { ...rem },
+          stored: JSON.parse(JSON.stringify(storedBreakdown)),
+          routedKg, totalKm, assignedCount, overflowCount,
+          activeNode: src,
+          scanEdges: dij.scannedEdgeIds,
+          distances: dij.dist,
+          pqHistory: dij.pqHistory,
+          routes: [...committedRoutes],
+          truckWaypoints: null,
+          cargoDrop: null,
+          checklist: evaluateGreedyCandidates(src, load, dij, rem),
+          dijMap,
+          trace: [...traceLines]
+        });
+
+        const evaluation = evaluateGreedyCandidates(src, load, dij, rem);
+        let waypoints = null;
+        let cargoDrop = null;
+
+        if (evaluation.chosen) {
+          const targetId = evaluation.chosen.id;
+          const routeObj = dij[targetId];
+          rem[targetId] -= load.weight;
+          storedBreakdown[targetId][load.type] += load.weight;
+          routedKg += load.weight;
+          totalKm += routeObj.distance;
+          assignedCount += 1;
+          waypoints = routeObj.nodes;
+          cargoDrop = { nodeId: targetId, weight: load.weight };
+
+          committedRoutes.push({
+            tripNum: assignedCount,
+            from: src,
+            to: targetId,
+            edges: routeObj.edges,
+            nodes: routeObj.nodes,
+            weight: load.weight,
+            type: load.type,
+            distance: routeObj.distance
+          });
+
+          log(
+            `GREEDY(${src})`,
+            `Assigned ${load.weight}kg ${load.type} from ${src} → ${targetId} (${routeObj.distance}km). Free space: R1=${rem.R1}kg, R2=${rem.R2}kg.`,
+            'emerald'
+          );
+        } else {
+          overflowCount += 1;
+          log(`GREEDY(${src})`, `Unallocated: ${load.weight}kg ${load.type} from ${src} exceeded capacity/type rules.`, 'rose');
+        }
+
+        steps.push({
+          index: sGrd,
+          totalSteps: totalStepsCount,
+          banner: evaluation.chosen
+            ? `Step ${sGrd}: Assigned ${src} → ${evaluation.chosen.id} (+${dij[evaluation.chosen.id].distance} km)`
+            : `Step ${sGrd}: ${src} Unallocated (Capacity Exhausted)`,
+          headline: evaluation.chosen
+            ? `Step ${sGrd}: Greedy Allocates Pickup ${src} → Centre ${evaluation.chosen.id} (${dij[evaluation.chosen.id].distance} km)`
+            : `Step ${sGrd}: Allocation Rejected for Pickup ${src}`,
+          body: evaluation.summary,
+          remaining: { ...rem },
+          stored: JSON.parse(JSON.stringify(storedBreakdown)),
+          routedKg, totalKm, assignedCount, overflowCount,
+          activeNode: src,
+          scanEdges: [],
+          distances: dij.dist,
+          pqHistory: dij.pqHistory,
+          routes: [...committedRoutes],
+          truckWaypoints: waypoints,
+          cargoDrop,
+          checklist: evaluation,
+          dijMap,
+          trace: [...traceLines]
+        });
+      });
+
+      log('DONE', `Completed: ${routedKg}kg routed across ${totalKm}km. Remaining: R1=${rem.R1}kg, R2=${rem.R2}kg.`, 'amber');
+
+      steps.push({
+        index: totalStepsCount,
+        totalSteps: totalStepsCount,
+        banner: `Completed: ${routedKg} kg Routed in ${totalKm} km`,
+        headline: `Final Summary — ${routedKg} kg Routed in ${totalKm} km Total Distance`,
+        body: `Remaining capacities: R1 has ${rem.R1}/${facilities.R1.maxCap} kg free; R2 has ${rem.R2}/${facilities.R2.maxCap} kg free.`,
+        remaining: { ...rem },
+        stored: JSON.parse(JSON.stringify(storedBreakdown)),
+        routedKg, totalKm, assignedCount, overflowCount,
+        activeNode: null,
+        scanEdges: [],
+        distances: null,
+        pqHistory: [],
+        routes: [...committedRoutes],
+        truckWaypoints: null,
+        cargoDrop: null,
+        checklist: steps[steps.length - 1].checklist,
+        dijMap,
+        trace: [...traceLines]
+      });
+    }
+
+    /**********************************************************************
+     * 4. SVG RENDERING & SMOOTH 60FPS NODE DRAG ENGINE
+     **********************************************************************/
+    function applyViewportTransform() {
+      const vp = document.getElementById('viewportGroup');
+      if (vp) vp.setAttribute('transform', `translate(${viewState.tx}, ${viewState.ty}) scale(${viewState.scale})`);
+    }
+
+    function clientToSvgCoords(clientX, clientY) {
+      const svg = document.getElementById('networkSvg');
+      const rect = svg.getBoundingClientRect();
+      const vbW = 880, vbH = 560;
+      const scaleFit = Math.min(rect.width / vbW, rect.height / vbH);
+      const offsetX = (rect.width - vbW * scaleFit) / 2;
+      const offsetY = (rect.height - vbH * scaleFit) / 2;
+
+      const rawSvgX = (clientX - rect.left - offsetX) / scaleFit;
+      const rawSvgY = (clientY - rect.top - offsetY) / scaleFit;
+      return {
+        x: (rawSvgX - viewState.tx) / viewState.scale,
+        y: (rawSvgY - viewState.ty) / viewState.scale
+      };
+    }
+
+    // Fast DOM-only update during dragging for buttery 60fps movement
+    function updateDraggedNodeDOM(nodeId) {
+      const node = NODES[nodeId];
+      if (!node) return;
+
+      const nodeG = document.querySelector(`#nodesLayer g[data-node-id="${nodeId}"]`);
+      if (nodeG) {
+        nodeG.setAttribute('transform', `translate(${node.x}, ${node.y})`);
+      }
+
+      edges.forEach(edge => {
+        if (edge.u === nodeId || edge.v === nodeId) {
+          const u = NODES[edge.u];
+          const v = NODES[edge.v];
+          if (!u || !v) return;
+
+          const line = document.querySelector(`#edgesLayer line[data-edge-id="${edge.id}"]`);
+          if (line) {
+            line.setAttribute('x1', u.x);
+            line.setAttribute('y1', u.y);
+            line.setAttribute('x2', v.x);
+            line.setAttribute('y2', v.y);
+          }
+
+          const roadBed = document.querySelector(`#roadBedsLayer line[data-bed-id="${edge.id}"]`);
+          if (roadBed) {
+            roadBed.setAttribute('x1', u.x);
+            roadBed.setAttribute('y1', u.y);
+            roadBed.setAttribute('x2', v.x);
+            roadBed.setAttribute('y2', v.y);
+          }
+
+          const pillG = document.querySelector(`#edgePillsLayer g[data-pill-edge-id="${edge.id}"]`);
+          if (pillG) {
+            const mx = (u.x + v.x) / 2;
+            const my = (u.y + v.y) / 2;
+            const yAdjust = edge.id === 'e_A_R2' ? -20 : (edge.id === 'e_B_R2' ? -14 : 0);
+            pillG.setAttribute('transform', `translate(${mx}, ${my + yAdjust})`);
+          }
+        }
+      });
+    }
+
+    function renderNetworkSVG(state) {
+      const roadBedsLayer = document.getElementById('roadBedsLayer');
+      const edgesLayer = document.getElementById('edgesLayer');
+      const wavefrontLayer = document.getElementById('wavefrontLayer');
+      const tripBadgesLayer = document.getElementById('tripBadgesLayer');
+      const pillsLayer = document.getElementById('edgePillsLayer');
+      const nodesLayer = document.getElementById('nodesLayer');
+      const effectsLayer = document.getElementById('effectsLayer');
+
+      roadBedsLayer.innerHTML = '';
+      edgesLayer.innerHTML = '';
+      wavefrontLayer.innerHTML = '';
+      tripBadgesLayer.innerHTML = '';
+      pillsLayer.innerHTML = '';
+      nodesLayer.innerHTML = '';
+      effectsLayer.innerHTML = '';
+
+      document.getElementById('graphSizeBadge').textContent = `G = (V: ${Object.keys(NODES).length}, E: ${edges.length})`;
+
+      const assignedEdgeSet = new Set();
+      state.routes.forEach(r => r.edges.forEach(eId => assignedEdgeSet.add(eId)));
+
+      const inspectedEdgeSet = new Set();
+      if (inspectedSourceId && state.dijMap[inspectedSourceId]) {
+        state.dijMap[inspectedSourceId].R1.edges.forEach(id => inspectedEdgeSet.add(id));
+        state.dijMap[inspectedSourceId].R2.edges.forEach(id => inspectedEdgeSet.add(id));
+      }
+
+      edges.forEach(edge => {
+        const u = NODES[edge.u];
+        const v = NODES[edge.v];
+        if (!u || !v) return;
+
+        const isAssigned = assignedEdgeSet.has(edge.id);
+        const isHoverPreview = hoverPreviewEdges.has(edge.id);
+        const isInspected = inspectedEdgeSet.has(edge.id);
+        const isScanned = state.scanEdges.includes(edge.id);
+
+        // Multi-Lane Asphalt Roadbed Underlay
+        const roadBed = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+        roadBed.setAttribute('data-bed-id', edge.id);
+        roadBed.setAttribute('x1', u.x);
+        roadBed.setAttribute('y1', u.y);
+        roadBed.setAttribute('x2', v.x);
+        roadBed.setAttribute('y2', v.y);
+        roadBed.setAttribute('stroke-linecap', 'round');
+        roadBed.setAttribute('stroke', edge.traffic ? '#FEF3C7' : '#E2E8F0');
+        roadBed.setAttribute('stroke-width', edge.scenic ? '7' : '11');
+        roadBedsLayer.appendChild(roadBed);
+
+        const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+        line.setAttribute('data-edge-id', edge.id);
+        line.setAttribute('data-u', edge.u);
+        line.setAttribute('data-v', edge.v);
+        line.setAttribute('x1', u.x);
+        line.setAttribute('y1', u.y);
+        line.setAttribute('x2', v.x);
+        line.setAttribute('y2', v.y);
+        line.setAttribute('stroke-linecap', 'round');
+
+        if (isHoverPreview) {
+          line.setAttribute('stroke', '#4F46E5');
+          line.setAttribute('stroke-width', '5');
+        } else if (isAssigned) {
+          line.setAttribute('stroke', '#059669');
+          line.setAttribute('stroke-width', '4.5');
+          line.setAttribute('marker-end', 'url(#arrowEmerald)');
+        } else if (isInspected) {
+          line.setAttribute('stroke', '#7C3AED');
+          line.setAttribute('stroke-width', '3.5');
+        } else if (isScanned) {
+          line.setAttribute('stroke', '#0284C7');
+          line.setAttribute('stroke-width', '3');
+          line.setAttribute('class', 'edge-scan-anim');
+        } else if (edge.traffic) {
+          line.setAttribute('stroke', '#D97706');
+          line.setAttribute('stroke-width', '2.5');
+          line.setAttribute('stroke-dasharray', '6 4');
+        } else if (edge.scenic) {
+          line.setAttribute('stroke', '#94A3B8');
+          line.setAttribute('stroke-width', '1.6');
+          line.setAttribute('stroke-dasharray', '4 5');
+        } else {
+          line.setAttribute('stroke', '#94A3B8');
+          line.setAttribute('stroke-width', '2');
+          line.setAttribute('stroke-dasharray', '6 4');
+        }
+        edgesLayer.appendChild(line);
+
+        if (isScanned && !isAssigned) {
+          const pulseDot = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+          pulseDot.setAttribute('r', '4');
+          pulseDot.setAttribute('fill', '#0284C7');
+          const anim = document.createElementNS('http://www.w3.org/2000/svg', 'animateMotion');
+          anim.setAttribute('dur', `${0.85 / simSpeed}s`);
+          anim.setAttribute('repeatCount', 'indefinite');
+          anim.setAttribute('path', `M ${u.x} ${u.y} L ${v.x} ${v.y}`);
+          pulseDot.appendChild(anim);
+          wavefrontLayer.appendChild(pulseDot);
+        }
+
+        const mx = (u.x + v.x) / 2;
+        const my = (u.y + v.y) / 2;
+        const yAdjust = edge.id === 'e_A_R2' ? -20 : (edge.id === 'e_B_R2' ? -14 : 0);
+
+        const pillG = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        pillG.setAttribute('data-pill-edge-id', edge.id);
+        pillG.setAttribute('data-u', edge.u);
+        pillG.setAttribute('data-v', edge.v);
+        pillG.setAttribute('transform', `translate(${mx}, ${my + yAdjust})`);
+        pillG.setAttribute('class', 'cursor-pointer');
+        pillG.addEventListener('pointerdown', (evt) => evt.stopPropagation());
+        pillG.addEventListener('click', (evt) => {
+          evt.stopPropagation();
+          openEdgeWeightPopover(edge, evt.clientX, evt.clientY);
+        });
+
+        const pillW = edge.traffic ? 58 : 46;
+        const pillBg = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+        pillBg.setAttribute('x', String(-pillW / 2));
+        pillBg.setAttribute('y', '-11');
+        pillBg.setAttribute('width', String(pillW));
+        pillBg.setAttribute('height', '22');
+        pillBg.setAttribute('rx', '6');
+        pillBg.setAttribute('fill', edge.traffic ? '#FFFBEB' : (isHoverPreview ? '#EEF2FF' : (isAssigned ? '#ECFDF5' : (isScanned ? '#F0F9FF' : '#FFFFFF'))));
+        pillBg.setAttribute('stroke', edge.traffic ? '#D97706' : (isHoverPreview ? '#4F46E5' : (isAssigned ? '#059669' : (isScanned ? '#0284C7' : '#CBD5E1'))));
+        pillBg.setAttribute('stroke-width', '1.4');
+
+        const pillTxt = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        pillTxt.setAttribute('x', '0');
+        pillTxt.setAttribute('y', '4');
+        pillTxt.setAttribute('text-anchor', 'middle');
+        pillTxt.setAttribute('font-family', 'JetBrains Mono');
+        pillTxt.setAttribute('font-size', '11');
+        pillTxt.setAttribute('font-weight', '600');
+        pillTxt.setAttribute('fill', edge.traffic ? '#B45309' : (isHoverPreview ? '#3730A3' : (isAssigned ? '#065F46' : (isScanned ? '#0369A1' : '#334155'))));
+        pillTxt.textContent = edge.traffic ? `⚠${edge.weight}km` : `${edge.weight}km`;
+
+        pillG.appendChild(pillBg);
+        pillG.appendChild(pillTxt);
+        pillsLayer.appendChild(pillG);
+      });
+
+      // Render Persistent Trip Sequence Badges (#1, #2, ...) on Completed Routes
+      state.routes.forEach((route, idx) => {
+        if (!route.nodes || route.nodes.length < 2) return;
+        const startN = NODES[route.nodes[0]];
+        const nextN = NODES[route.nodes[1]];
+        if (!startN || !nextN) return;
+        const bx = startN.x + (nextN.x - startN.x) * 0.28;
+        const by = startN.y + (nextN.y - startN.y) * 0.28 - 14;
+
+        const badge = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        badge.setAttribute('transform', `translate(${bx}, ${by})`);
+        const bRect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+        bRect.setAttribute('x', '-21');
+        bRect.setAttribute('y', '-9');
+        bRect.setAttribute('width', '42');
+        bRect.setAttribute('height', '17');
+        bRect.setAttribute('rx', '8.5');
+        bRect.setAttribute('fill', '#065F46');
+        const bTxt = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        bTxt.setAttribute('x', '0');
+        bTxt.setAttribute('y', '3');
+        bTxt.setAttribute('text-anchor', 'middle');
+        bTxt.setAttribute('fill', '#FFFFFF');
+        bTxt.setAttribute('font-family', 'JetBrains Mono');
+        bTxt.setAttribute('font-size', '9.5');
+        bTxt.setAttribute('font-weight', '700');
+        bTxt.textContent = `Trip #${route.tripNum || idx + 1}`;
+        badge.appendChild(bRect);
+        badge.appendChild(bTxt);
+        tripBadgesLayer.appendChild(badge);
+      });
+
+      Object.values(NODES).forEach(node => {
+        const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        g.setAttribute('data-node-id', node.id);
+        g.setAttribute('transform', `translate(${node.x}, ${node.y})`);
+        g.setAttribute('class', 'cursor-grab active:cursor-grabbing');
+        g.style.touchAction = 'none';
+
+        g.addEventListener('pointerdown', (evt) => {
+          evt.stopPropagation();
+          if (canvasMode === 'addEdge') {
+            handleConnectRoadClick(node.id);
+            return;
+          }
+          if (canvasMode === 'addNode') return;
+          const pt = clientToSvgCoords(evt.clientX, evt.clientY);
+          draggingNodeId = node.id;
+          dragOffset = { dx: node.x - pt.x, dy: node.y - pt.y };
+          dragMoved = false;
+        });
+
+        const isActive = state.activeNode === node.id || inspectedSourceId === node.id || pendingEdgeStartNode === node.id;
+        const isPickup = node.kind === 'pickup';
+        const isJunction = node.kind === 'junction';
+        const isFacility = node.kind === 'facility';
+
+        if (isPickup) {
+          const load = pickups[node.id];
+          const isBat = load && load.type === 'Batteries';
+          const accent = isActive ? '#0284C7' : (isBat ? '#D97706' : '#7C3AED');
+          const bgFill = isBat ? '#FFFBEB' : '#F5F3FF';
+
+          if (isActive) {
+            const ring = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+            ring.setAttribute('r', '40');
+            ring.setAttribute('fill', 'none');
+            ring.setAttribute('stroke', '#0284C7');
+            ring.setAttribute('stroke-width', '2');
+            ring.setAttribute('class', 'node-pulse-ring');
+            g.appendChild(ring);
+          }
+
+          const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+          circle.setAttribute('r', '31');
+          circle.setAttribute('fill', bgFill);
+          circle.setAttribute('stroke', accent);
+          circle.setAttribute('stroke-width', isActive ? '3.5' : '2.5');
+          g.appendChild(circle);
+
+          const idTxt = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+          idTxt.setAttribute('y', '-3');
+          idTxt.setAttribute('text-anchor', 'middle');
+          idTxt.setAttribute('fill', '#0F172A');
+          idTxt.setAttribute('font-size', '15');
+          idTxt.setAttribute('font-weight', '800');
+          idTxt.textContent = node.id;
+          g.appendChild(idTxt);
+
+          const wtTxt = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+          wtTxt.setAttribute('y', '13');
+          wtTxt.setAttribute('text-anchor', 'middle');
+          wtTxt.setAttribute('fill', accent);
+          wtTxt.setAttribute('font-family', 'JetBrains Mono');
+          wtTxt.setAttribute('font-size', '11');
+          wtTxt.setAttribute('font-weight', '700');
+          wtTxt.textContent = load ? `${load.weight}kg` : '';
+          g.appendChild(wtTxt);
+
+          const catTxt = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+          catTxt.setAttribute('y', '47');
+          catTxt.setAttribute('text-anchor', 'middle');
+          catTxt.setAttribute('fill', accent);
+          catTxt.setAttribute('font-family', 'JetBrains Mono');
+          catTxt.setAttribute('font-size', '10.5');
+          catTxt.setAttribute('font-weight', '600');
+          catTxt.textContent = load ? load.type : '';
+          g.appendChild(catTxt);
+
+          // Delete badge on custom pickup nodes (D, E, ...)
+          if (!['A', 'B', 'C'].includes(node.id)) {
+            const delG = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+            delG.setAttribute('transform', 'translate(23, -23)');
+            delG.setAttribute('class', 'cursor-pointer');
+            delG.addEventListener('pointerdown', (e) => {
+              e.stopPropagation();
+              stopPlayback();
+              removeCustomPickupNode(node.id);
+            });
+            const delCircle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+            delCircle.setAttribute('r', '9');
+            delCircle.setAttribute('fill', '#E11D48');
+            delCircle.setAttribute('stroke', '#FFFFFF');
+            delCircle.setAttribute('stroke-width', '1.5');
+            const delX = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+            delX.setAttribute('y', '3.5');
+            delX.setAttribute('text-anchor', 'middle');
+            delX.setAttribute('fill', '#FFFFFF');
+            delX.setAttribute('font-size', '11');
+            delX.setAttribute('font-weight', '700');
+            delX.textContent = '×';
+            delG.appendChild(delCircle);
+            delG.appendChild(delX);
+            g.appendChild(delG);
+          }
+
+        } else if (isJunction) {
+          const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+          rect.setAttribute('x', '-26');
+          rect.setAttribute('y', '-26');
+          rect.setAttribute('width', '52');
+          rect.setAttribute('height', '52');
+          rect.setAttribute('rx', '12');
+          rect.setAttribute('fill', isActive ? '#E0F2FE' : '#FFFFFF');
+          rect.setAttribute('stroke', isActive ? '#0284C7' : '#94A3B8');
+          rect.setAttribute('stroke-width', isActive ? '3' : '2');
+          g.appendChild(rect);
+
+          const idTxt = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+          idTxt.setAttribute('y', '1');
+          idTxt.setAttribute('text-anchor', 'middle');
+          idTxt.setAttribute('fill', '#0F172A');
+          idTxt.setAttribute('font-family', 'JetBrains Mono');
+          idTxt.setAttribute('font-size', '14');
+          idTxt.setAttribute('font-weight', '700');
+          idTxt.textContent = node.id;
+          g.appendChild(idTxt);
+
+          const hubTxt = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+          hubTxt.setAttribute('y', '14');
+          hubTxt.setAttribute('text-anchor', 'middle');
+          hubTxt.setAttribute('fill', '#64748B');
+          hubTxt.setAttribute('font-size', '9');
+          hubTxt.setAttribute('font-weight', '600');
+          hubTxt.textContent = 'HUB';
+          g.appendChild(hubTxt);
+
+        } else if (isFacility) {
+          const fac = facilities[node.id];
+          const maxCap = fac ? fac.maxCap : 20;
+          const remCap = state.remaining ? (state.remaining[node.id] ?? maxCap) : maxCap;
+          const pct = Math.max(0, Math.min(100, (remCap / maxCap) * 100));
+          const isJustDelivered = state.cargoDrop && state.cargoDrop.nodeId === node.id;
+          const storedInfo = state.stored ? state.stored[node.id] : { Batteries: 0, Computers: 0 };
+
+          if (isJustDelivered) {
+            g.classList.add('facility-pulse');
+          }
+
+          const box = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+          box.setAttribute('x', '-62');
+          box.setAttribute('y', '-40');
+          box.setAttribute('width', '124');
+          box.setAttribute('height', '80');
+          box.setAttribute('rx', '14');
+          box.setAttribute('fill', isJustDelivered ? '#F0FDF4' : '#FFFFFF');
+          box.setAttribute('stroke', remCap === 0 ? '#E11D48' : (isActive || isJustDelivered ? '#059669' : '#10B981'));
+          box.setAttribute('stroke-width', isJustDelivered ? '3.5' : '2.5');
+          g.appendChild(box);
+
+          const idTxt = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+          idTxt.setAttribute('y', '-17');
+          idTxt.setAttribute('text-anchor', 'middle');
+          idTxt.setAttribute('fill', '#0F172A');
+          idTxt.setAttribute('font-size', '14');
+          idTxt.setAttribute('font-weight', '800');
+          idTxt.textContent = node.id;
+          g.appendChild(idTxt);
+
+          const accTxt = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+          accTxt.setAttribute('y', '-2');
+          accTxt.setAttribute('text-anchor', 'middle');
+          accTxt.setAttribute('fill', '#475569');
+          accTxt.setAttribute('font-family', 'JetBrains Mono');
+          accTxt.setAttribute('font-size', '9.5');
+          accTxt.setAttribute('font-weight', '600');
+          accTxt.textContent = fac ? fac.accepted.join(' + ') : '';
+          g.appendChild(accTxt);
+
+          const barBg = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+          barBg.setAttribute('x', '-48');
+          barBg.setAttribute('y', '9');
+          barBg.setAttribute('width', '96');
+          barBg.setAttribute('height', '8');
+          barBg.setAttribute('rx', '4');
+          barBg.setAttribute('fill', '#E2E8F0');
+          g.appendChild(barBg);
+
+          const barFill = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+          barFill.setAttribute('x', '-48');
+          barFill.setAttribute('y', '9');
+          barFill.setAttribute('width', String((96 * pct) / 100));
+          barFill.setAttribute('height', '8');
+          barFill.setAttribute('rx', '4');
+          barFill.setAttribute('class', 'cap-bar-smooth');
+          barFill.setAttribute('fill', pct > 40 ? '#059669' : (pct > 15 ? '#D97706' : '#E11D48'));
+          g.appendChild(barFill);
+
+          // Live Cargo Breakdown Inside Facility Card
+          const parts = [];
+          if (storedInfo.Batteries > 0) parts.push(`${storedInfo.Batteries}kg Bat`);
+          if (storedInfo.Computers > 0) parts.push(`${storedInfo.Computers}kg Comp`);
+          const breakdownTxt = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+          breakdownTxt.setAttribute('y', '30');
+          breakdownTxt.setAttribute('text-anchor', 'middle');
+          breakdownTxt.setAttribute('fill', parts.length ? '#065F46' : '#94A3B8');
+          breakdownTxt.setAttribute('font-family', 'JetBrains Mono');
+          breakdownTxt.setAttribute('font-size', '9');
+          breakdownTxt.setAttribute('font-weight', '600');
+          breakdownTxt.textContent = parts.length ? parts.join(' · ') : 'Empty Bay';
+          g.appendChild(breakdownTxt);
+
+          const capTxt = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+          capTxt.setAttribute('y', '55');
+          capTxt.setAttribute('text-anchor', 'middle');
+          capTxt.setAttribute('fill', '#047857');
+          capTxt.setAttribute('font-family', 'JetBrains Mono');
+          capTxt.setAttribute('font-size', '11');
+          capTxt.setAttribute('font-weight', '700');
+          capTxt.textContent = `Free: ${remCap}/${maxCap} kg`;
+          g.appendChild(capTxt);
+        }
+
+        const activeDistances = (inspectedSourceId && state.dijMap[inspectedSourceId])
+          ? state.dijMap[inspectedSourceId].dist
+          : state.distances;
+
+        if (activeDistances && activeDistances[node.id] !== undefined && activeDistances[node.id] < Infinity) {
+          const dVal = activeDistances[node.id];
+          const yOff = isFacility ? -52 : -44;
+          const dBadge = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+          dBadge.setAttribute('transform', `translate(0, ${yOff})`);
+
+          const dRect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+          dRect.setAttribute('x', '-30');
+          dRect.setAttribute('y', '-10');
+          dRect.setAttribute('width', '60');
+          dRect.setAttribute('height', '19');
+          dRect.setAttribute('rx', '5');
+          dRect.setAttribute('fill', '#E0F2FE');
+          dRect.setAttribute('stroke', '#0284C7');
+          dRect.setAttribute('stroke-width', '1.2');
+
+          const dTxt = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+          dTxt.setAttribute('x', '0');
+          dTxt.setAttribute('y', '3');
+          dTxt.setAttribute('text-anchor', 'middle');
+          dTxt.setAttribute('fill', '#0369A1');
+          dTxt.setAttribute('font-family', 'JetBrains Mono');
+          dTxt.setAttribute('font-size', '10');
+          dTxt.setAttribute('font-weight', '700');
+          dTxt.textContent = `d=${dVal}km`;
+
+          dBadge.appendChild(dRect);
+          dBadge.appendChild(dTxt);
+          g.appendChild(dBadge);
+        }
+
+        nodesLayer.appendChild(g);
+      });
+
+      if (state.truckWaypoints && state.truckWaypoints.length >= 2) {
+        animateVehicle(state.truckWaypoints, state.cargoDrop);
+      } else {
+        stopVehicleAnim();
+      }
+    }
+
+    function animateVehicle(nodeIds, cargoDrop) {
+      stopVehicleAnim();
+      const marker = document.getElementById('vehicleMarker');
+      if (!marker) return;
+
+      const pts = nodeIds.map(id => NODES[id]).filter(Boolean);
+      if (pts.length < 2) return;
+
+      marker.classList.remove('hidden');
+      const segmentMs = 620 / simSpeed;
+      const totalMs = segmentMs * (pts.length - 1);
+      const t0 = performance.now();
+
+      function tick(now) {
+        const ratio = Math.min(1, (now - t0) / totalMs);
+        const scaled = ratio * (pts.length - 1);
+        const idx = Math.max(0, Math.min(pts.length - 2, Math.floor(scaled)));
+        const localT = scaled - idx;
+
+        const pA = pts[idx];
+        const pB = pts[idx + 1];
+        if (!pA || !pB) return;
+
+        const x = pA.x + (pB.x - pA.x) * localT;
+        const y = pA.y + (pB.y - pA.y) * localT;
+        const angleDeg = (Math.atan2(pB.y - pA.y, pB.x - pA.x) * 180) / Math.PI;
+
+        marker.setAttribute('transform', `translate(${x}, ${y}) rotate(${angleDeg})`);
+        if (ratio < 1) {
+          vehicleRaf = requestAnimationFrame(tick);
+        } else if (cargoDrop && NODES[cargoDrop.nodeId]) {
+          playTone(660, 0.14, 'triangle', 0.05);
+          spawnCargoPop(NODES[cargoDrop.nodeId], cargoDrop.weight);
+        }
+      }
+      vehicleRaf = requestAnimationFrame(tick);
+    }
+
+    function spawnCargoPop(targetNode, weight) {
+      const effectsLayer = document.getElementById('effectsLayer');
+      if (!effectsLayer || !targetNode) return;
+      const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+      g.setAttribute('transform', `translate(${targetNode.x}, ${targetNode.y - 45})`);
+      const inner = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+      inner.setAttribute('class', 'cargo-pop');
+
+      const pill = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+      pill.setAttribute('x', '-36');
+      pill.setAttribute('y', '-12');
+      pill.setAttribute('width', '72');
+      pill.setAttribute('height', '22');
+      pill.setAttribute('rx', '11');
+      pill.setAttribute('fill', '#059669');
+
+      const txt = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+      txt.setAttribute('x', '0');
+      txt.setAttribute('y', '3');
+      txt.setAttribute('text-anchor', 'middle');
+      txt.setAttribute('fill', '#FFFFFF');
+      txt.setAttribute('font-family', 'JetBrains Mono');
+      txt.setAttribute('font-size', '10.5');
+      txt.setAttribute('font-weight', '700');
+      txt.textContent = `+${weight}kg Stored`;
+
+      inner.appendChild(pill);
+      inner.appendChild(txt);
+      g.appendChild(inner);
+      effectsLayer.appendChild(g);
+    }
+
+    function stopVehicleAnim() {
+      if (vehicleRaf !== null) {
+        cancelAnimationFrame(vehicleRaf);
+        vehicleRaf = null;
+      }
+      const marker = document.getElementById('vehicleMarker');
+      if (marker) marker.classList.add('hidden');
+    }
+
+    function openEdgeWeightPopover(edge, clientX, clientY) {
+      editingEdgeId = edge.id;
+      const pop = document.getElementById('edgePopover');
+      const wrapRect = document.getElementById('canvasWrapper').getBoundingClientRect();
+      document.getElementById('edgePopoverTitle').textContent = `Road ${edge.u} ↔ ${edge.v}`;
+      document.getElementById('edgeWeightInput').value = edge.weight;
+
+      const trafficBtn = document.getElementById('btnToggleTraffic');
+      const trafficLbl = document.getElementById('labelTrafficBtn');
+      if (edge.traffic) {
+        trafficBtn.className = 'w-full py-1.5 px-2.5 rounded-lg text-[11px] font-semibold flex items-center justify-center gap-1.5 border border-amber-300 bg-amber-100 text-amber-900 transition';
+        trafficLbl.textContent = 'Clear Traffic Jam';
+      } else {
+        trafficBtn.className = 'w-full py-1.5 px-2.5 rounded-lg text-[11px] font-semibold flex items-center justify-center gap-1.5 border border-amber-200 bg-amber-50/70 text-amber-800 hover:bg-amber-100 transition';
+        trafficLbl.textContent = 'Simulate Traffic (2× km)';
+      }
+
+      const delEdgeBtn = document.getElementById('btnDeleteEdge');
+      const isInitialEdge = INITIAL_EDGES.some(ie => ie.id === edge.id);
+      if (isInitialEdge) {
+        delEdgeBtn.classList.add('hidden');
+      } else {
+        delEdgeBtn.classList.remove('hidden');
+      }
+
+      const left = Math.min(wrapRect.width - 235, Math.max(12, clientX - wrapRect.left - 110));
+      const top = Math.min(wrapRect.height - 135, Math.max(12, clientY - wrapRect.top + 14));
+      pop.style.left = `${left}px`;
+      pop.style.top = `${top}px`;
+      pop.classList.remove('hidden');
+      document.getElementById('edgeWeightInput').focus();
+    }
+
+    function closeEdgeWeightPopover() {
+      editingEdgeId = null;
+      document.getElementById('edgePopover').classList.add('hidden');
+    }
+
+    function setCanvasMode(mode) {
+      canvasMode = mode;
+      pendingEdgeStartNode = null;
+      const hint = document.getElementById('mapHelperHint');
+      const btnSel = document.getElementById('modeSelectBtn');
+      const btnAddN = document.getElementById('modeAddNodeBtn');
+      const btnAddE = document.getElementById('modeAddEdgeBtn');
+
+      [btnSel, btnAddN, btnAddE].forEach(b => {
+        b.className = 'inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-semibold text-slate-600 hover:bg-slate-100 transition';
+      });
+
+      if (mode === 'select') {
+        btnSel.className = 'inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-semibold bg-slate-900 text-white transition';
+        hint.textContent = 'Drag any node smoothly, click a pickup source to inspect its Dijkstra tree, or click a km pill to edit road distance.';
+      } else if (mode === 'addNode') {
+        btnAddN.className = 'inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-semibold bg-amber-600 text-white transition';
+        hint.textContent = 'Click anywhere on the empty canvas to place a new Pickup Node (automatically connected to nearest hub).';
+      } else if (mode === 'addEdge') {
+        btnAddE.className = 'inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-semibold bg-sky-600 text-white transition';
+        hint.textContent = 'Click the FIRST node, then click a SECOND node to build a new road segment between them.';
+      }
+      renderNetworkSVG(steps[currentStep]);
+    }
+
+    function addDynamicPickupNode(svgX, svgY) {
+      const existingIds = Object.keys(NODES);
+      const alphabet = 'DEFGHIJKLMNOPQRSTUVWXYZ';
+      let nextId = null;
+      for (const ch of alphabet) {
+        if (!existingIds.includes(ch)) {
+          nextId = ch;
+          break;
+        }
+      }
+      if (!nextId) return;
+
+      const clampedX = Math.max(60, Math.min(820, Math.round(svgX)));
+      const clampedY = Math.max(65, Math.min(495, Math.round(svgY)));
+
+      NODES[nextId] = { id: nextId, kind: 'pickup', x: clampedX, y: clampedY };
+      pickups[nextId] = { weight: 8, type: existingIds.length % 2 === 0 ? 'Batteries' : 'Computers' };
+
+      let nearestHub = 'J2';
+      let bestPixelDist = Infinity;
+      ['J1', 'J2', 'J3'].forEach(hId => {
+        const d = Math.hypot(NODES[hId].x - clampedX, NODES[hId].y - clampedY);
+        if (d < bestPixelDist) {
+          bestPixelDist = d;
+          nearestHub = hId;
+        }
+      });
+
+      const autoKm = Math.max(1, Math.min(9, Math.round(bestPixelDist / 90)));
+      edges.push({ id: `e_${nextId}_${nearestHub}`, u: nextId, v: nearestHub, weight: autoKm });
+
+      playTone(580, 0.1, 'sine', 0.05);
+      renderDynamicPickupSliders();
+      setCanvasMode('select');
+      rebuildTimeline(0);
+    }
+
+    function handleConnectRoadClick(nodeId) {
+      if (!pendingEdgeStartNode) {
+        pendingEdgeStartNode = nodeId;
+        document.getElementById('mapHelperHint').textContent = `Selected ${nodeId}. Now click a second node to connect road segment.`;
+        playTone(480, 0.06, 'sine', 0.04);
+        renderNetworkSVG(steps[currentStep]);
+        return;
+      }
+      if (pendingEdgeStartNode === nodeId) {
+        pendingEdgeStartNode = null;
+        setCanvasMode('select');
+        return;
+      }
+
+      const u = pendingEdgeStartNode;
+      const v = nodeId;
+      const exists = edges.find(e => (e.u === u && e.v === v) || (e.u === v && e.v === u));
+      if (!exists) {
+        const pxDist = Math.hypot(NODES[u].x - NODES[v].x, NODES[u].y - NODES[v].y);
+        const km = Math.max(1, Math.min(12, Math.round(pxDist / 95)));
+        edges.push({ id: `e_${u}_${v}_${Date.now()}`, u, v, weight: km, custom: true });
+        playTone(640, 0.1, 'triangle', 0.05);
+      }
+      pendingEdgeStartNode = null;
+      setCanvasMode('select');
+      rebuildTimeline(0);
+    }
+
+    function renderDynamicPickupSliders() {
+      const container = document.getElementById('dynamicPickupsSliders');
+      if (!container) return;
+      container.innerHTML = Object.keys(pickups).map(id => {
+        const p = pickups[id];
+        const dotColor = p.type === 'Batteries' ? 'bg-amber-500' : 'bg-violet-500';
+        const isCustom = !['A', 'B', 'C'].includes(id);
+        return `
+          <div class="p-2.5 rounded-lg border border-slate-200 bg-slate-50/60">
+            <div class="flex items-center justify-between mb-1.5">
+              <span class="font-semibold text-slate-800 flex items-center gap-1.5">
+                <span class="w-2 h-2 rounded-full ${dotColor}"></span> Pickup ${id}
+              </span>
+              <div class="flex items-center gap-1.5">
+                <select data-pickup-type="${id}" class="bg-white text-[11px] font-mono border border-slate-300 rounded px-2 py-0.5 text-slate-700">
+                  <option value="Batteries" ${p.type === 'Batteries' ? 'selected' : ''}>Batteries</option>
+                  <option value="Computers" ${p.type === 'Computers' ? 'selected' : ''}>Computers</option>
+                </select>
+                ${isCustom ? `<button data-remove-pickup="${id}" class="p-1 rounded text-rose-600 hover:bg-rose-100 transition" title="Remove Pickup ${id}"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button>` : ''}
+              </div>
+            </div>
+            <div class="flex items-center gap-2.5">
+              <input data-pickup-weight="${id}" type="range" min="1" max="30" value="${p.weight}" class="w-full" />
+              <span id="lblWeight_${id}" class="font-mono font-semibold text-slate-800 w-11 text-right tabular">${p.weight} kg</span>
+            </div>
+          </div>
+        `;
+      }).join('');
+      lucide.createIcons();
+
+      container.querySelectorAll('button[data-remove-pickup]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          stopPlayback();
+          removeCustomPickupNode(btn.getAttribute('data-remove-pickup'));
+        });
+      });
+
+      container.querySelectorAll('input[data-pickup-weight]').forEach(rng => {
+        rng.addEventListener('input', (e) => {
+          stopPlayback();
+          const id = e.target.getAttribute('data-pickup-weight');
+          pickups[id].weight = parseInt(e.target.value, 10);
+          document.getElementById(`lblWeight_${id}`).textContent = `${pickups[id].weight} kg`;
+          rebuildTimeline(currentStep);
+        });
+      });
+
+      container.querySelectorAll('select[data-pickup-type]').forEach(sel => {
+        sel.addEventListener('change', (e) => {
+          stopPlayback();
+          const id = e.target.getAttribute('data-pickup-type');
+          pickups[id].type = e.target.value;
+          renderDynamicPickupSliders();
+          rebuildTimeline(currentStep);
+        });
+      });
+    }
+
+    /**********************************************************************
+     * 5. INSPECTOR & UI UPDATER
+     **********************************************************************/
+    function renderCurrentState() {
+      const state = steps[currentStep];
+      if (!state) return;
+
+      const totalRequested = Object.values(pickups).reduce((acc, p) => acc + p.weight, 0);
+      animateKpiCounter('kpiRoutedKg', displayedKpi.routedKg, state.routedKg);
+      animateKpiCounter('kpiTotalKm', displayedKpi.totalKm, state.totalKm);
+      displayedKpi = { routedKg: state.routedKg, totalKm: state.totalKm };
+      document.getElementById('kpiTargetKg').textContent = `/ ${totalRequested} kg`;
+      document.getElementById('kpiDispatchCount').textContent = `${state.assignedCount} / ${Object.keys(pickups).length} Assigned`;
+
+      const overflowPill = document.getElementById('kpiOverflowPill');
+      if (state.overflowCount > 0) {
+        overflowPill.classList.remove('hidden');
+        overflowPill.textContent = `${state.overflowCount} Overflow`;
+      } else {
+        overflowPill.classList.add('hidden');
+      }
+
+      document.getElementById('kpiStepTag').textContent = `STEP ${state.index} / ${state.totalSteps}`;
+      document.getElementById('kpiBannerText').textContent = state.banner;
+      document.getElementById('narrativeHeadline').textContent = state.headline;
+      document.getElementById('narrativeBody').textContent = state.body;
+
+      document.getElementById('btnPrevStep').disabled = currentStep === 0;
+      document.getElementById('btnNextStep').disabled = currentStep === steps.length - 1;
+
+      const tbody = document.getElementById('dijkstraTableBody');
+      if (tbody) {
+        tbody.innerHTML = getOrderedPickupIds().map(id => {
+          const d = state.dijMap[id];
+          const chosenRoute = state.routes.find(r => r.from === id);
+          const activeRow = state.activeNode === id || inspectedSourceId === id;
+          const r1Win = chosenRoute && chosenRoute.to === 'R1';
+          const r2Win = chosenRoute && chosenRoute.to === 'R2';
+
+          return `
+            <tr class="${activeRow ? 'bg-sky-50/70' : ''}">
+              <td class="py-2 px-2.5 font-bold text-slate-900">${id} <span class="text-[10px] font-normal text-slate-500">(${pickups[id].weight}kg)</span></td>
+              <td data-preview-src="${id}" data-preview-dst="R1" class="py-2 px-2.5 cursor-pointer hover:bg-indigo-50/80 transition ${r1Win ? 'text-emerald-700 font-bold' : 'text-slate-600'}">
+                ${d.R1.distance === Infinity ? '∞' : d.R1.distance + 'km'} <span class="text-[10px] text-slate-400">[${d.R1.nodes.join('→')}]</span>
+              </td>
+              <td data-preview-src="${id}" data-preview-dst="R2" class="py-2 px-2.5 cursor-pointer hover:bg-indigo-50/80 transition ${r2Win ? 'text-emerald-700 font-bold' : 'text-slate-600'}">
+                ${d.R2.distance === Infinity ? '∞' : d.R2.distance + 'km'} <span class="text-[10px] text-slate-400">[${d.R2.nodes.join('→')}]</span>
+              </td>
+            </tr>
+          `;
+        }).join('');
+
+        tbody.querySelectorAll('td[data-preview-src]').forEach(cell => {
+          cell.addEventListener('mouseenter', () => {
+            const src = cell.getAttribute('data-preview-src');
+            const dst = cell.getAttribute('data-preview-dst');
+            const pathEdges = state.dijMap[src]?.[dst]?.edges || [];
+            hoverPreviewEdges = new Set(pathEdges);
+            renderNetworkSVG(state);
+          });
+          cell.addEventListener('mouseleave', () => {
+            hoverPreviewEdges.clear();
+            renderNetworkSVG(state);
+          });
+        });
+      }
+
+      const pqBox = document.getElementById('pqTraceBox');
+      if (state.pqHistory && state.pqHistory.length > 0) {
+        pqBox.innerHTML = state.pqHistory.map((item, idx) => `
+          <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-white border border-slate-200 text-slate-700">
+            <span class="text-[9px] text-slate-400">#${idx + 1}</span> ${item}
+          </span>
+        `).join('<span class="text-slate-300">→</span>');
+      } else {
+        pqBox.innerHTML = '<span class="text-slate-400">Step to view Priority Queue pops...</span>';
+      }
+
+      const box = document.getElementById('greedyChecklistBox');
+      const pill = document.getElementById('checklistNodePill');
+      if (!state.checklist) {
+        pill.textContent = 'Idle';
+        box.innerHTML = `
+          <div class="p-3 rounded-lg bg-slate-50 border border-slate-200 text-slate-500 text-center">
+            Advance to Step 1 to inspect Greedy candidate ranking and capacity checks.
+          </div>
+        `;
+      } else {
+        const cl = state.checklist;
+        pill.textContent = `Source ${cl.sourceId}: ${cl.load.weight}kg ${cl.load.type}`;
+        box.innerHTML = cl.candidates.map((c, idx) => `
+          <div class="p-2.5 rounded-lg border ${c.selected ? 'border-emerald-300 bg-emerald-50/50' : 'border-slate-200 bg-slate-50/50'} space-y-1.5">
+            <div class="flex items-center justify-between">
+              <span class="font-bold text-slate-900">
+                <span class="font-mono text-[10px] px-1.5 py-0.5 rounded bg-white border border-slate-200 text-slate-600 mr-1">#${idx + 1}</span>
+                ${c.label} (${c.distance === Infinity ? '∞' : c.distance + ' km'})
+              </span>
+              <span class="text-[10px] font-mono font-bold px-2 py-0.5 rounded ${c.selected ? 'bg-emerald-600 text-white' : 'bg-slate-200 text-slate-600'}">
+                ${c.selected ? 'ASSIGNED' : 'SKIPPED'}
+              </span>
+            </div>
+            <div class="grid grid-cols-3 gap-1.5 text-[11px] font-mono tabular">
+              <div class="px-2 py-1 rounded bg-white border border-slate-200/80 flex justify-between">
+                <span class="text-slate-500">Rank</span>
+                <span class="font-semibold text-slate-800">${c.isNearest ? '1st' : '2nd'}</span>
+              </div>
+              <div class="px-2 py-1 rounded bg-white border border-slate-200/80 flex justify-between">
+                <span class="text-slate-500">Type</span>
+                <span class="font-semibold ${c.typeValid ? 'text-emerald-700' : 'text-rose-600'}">${c.typeValid ? 'Pass' : 'Fail'}</span>
+              </div>
+              <div class="px-2 py-1 rounded bg-white border border-slate-200/80 flex justify-between">
+                <span class="text-slate-500">Space</span>
+                <span class="font-semibold ${c.capValid ? 'text-emerald-700' : 'text-rose-600'}">${c.remCap}kg</span>
+              </div>
+            </div>
+          </div>
+        `).join('');
+      }
+
+      const toneColors = {
+        sky: 'text-sky-700',
+        emerald: 'text-emerald-700',
+        rose: 'text-rose-700',
+        amber: 'text-amber-700',
+        slate: 'text-slate-700'
+      };
+      const consoleEl = document.getElementById('traceConsole');
+      consoleEl.innerHTML = state.trace.map(t => `
+        <div class="leading-relaxed">
+          <span class="font-bold ${toneColors[t.tone] || 'text-slate-700'}">[${t.prefix}]</span>
+          <span class="text-slate-700">${t.text}</span>
+        </div>
+      `).join('');
+      consoleEl.scrollTop = consoleEl.scrollHeight;
+
+      renderNetworkSVG(state);
+    }
+
+    /**********************************************************************
+     * 6. PLAYBACK, TABS, ZOOM & EVENT LISTENERS
+     **********************************************************************/
+    function rebuildTimeline(keepIndex = 0) {
+      buildSimulationTimeline();
+      currentStep = Math.min(keepIndex, steps.length - 1);
+      renderCurrentState();
+    }
+
+    function startPlayback() {
+      if (playTimer) {
+        stopPlayback();
+        return;
+      }
+      if (currentStep >= steps.length - 1) {
+        currentStep = 0;
+        renderCurrentState();
+      }
+      document.getElementById('labelPlayPause').textContent = 'Pause';
+      document.getElementById('iconPlayPause').setAttribute('data-lucide', 'pause');
+      lucide.createIcons();
+
+      playTimer = setInterval(() => {
+        if (currentStep < steps.length - 1) {
+          currentStep += 1;
+          playTone(420 + currentStep * 25, 0.06, 'sine', 0.03);
+          renderCurrentState();
+        } else {
+          stopPlayback();
+        }
+      }, 1450 / simSpeed);
+    }
+
+    function stopPlayback() {
+      if (playTimer) {
+        clearInterval(playTimer);
+        playTimer = null;
+      }
+      document.getElementById('labelPlayPause').textContent = 'Play Simulation';
+      document.getElementById('iconPlayPause').setAttribute('data-lucide', 'play');
+      lucide.createIcons();
+    }
+
+    function loadPreset(preset) {
+      stopPlayback();
+      NODES = JSON.parse(JSON.stringify(INITIAL_NODES));
+      edges = JSON.parse(JSON.stringify(INITIAL_EDGES));
+      pickups = {
+        A: { ...preset.A },
+        B: { ...preset.B },
+        C: { ...preset.C }
+      };
+      facilities.R1.maxCap = preset.capR1;
+      facilities.R2.maxCap = preset.capR2;
+      facilities.R1.accepted = ['Batteries'];
+      facilities.R2.accepted = ['Batteries', 'Computers'];
+      greedyOrderMode = 'default';
+      document.getElementById('selGreedyOrder').value = 'default';
+      document.getElementById('chkR1Bat').checked = true;
+      document.getElementById('chkR1Comp').checked = false;
+      document.getElementById('chkR2Bat').checked = true;
+      document.getElementById('chkR2Comp').checked = true;
+
+      document.getElementById('rngCapR1').value = preset.capR1;
+      document.getElementById('lblCapR1').textContent = `${preset.capR1} kg`;
+      document.getElementById('rngCapR2').value = preset.capR2;
+      document.getElementById('lblCapR2').textContent = `${preset.capR2} kg`;
+
+      renderDynamicPickupSliders();
+      rebuildTimeline(0);
+      startPlayback();
+    }
+
+    function switchTab(tabName) {
+      const panes = {
+        inspector: document.getElementById('tabPaneInspector'),
+        params: document.getElementById('tabPaneParams'),
+        logs: document.getElementById('tabPaneLogs')
+      };
+      const btns = {
+        inspector: document.getElementById('tabBtnInspector'),
+        params: document.getElementById('tabBtnParams'),
+        logs: document.getElementById('tabBtnLogs')
+      };
+      Object.keys(panes).forEach(k => {
+        if (k === tabName) {
+          panes[k].classList.remove('hidden');
+          btns[k].className = 'py-2.5 px-2 text-slate-900 bg-white border-b-2 border-slate-900 flex items-center justify-center gap-1.5';
+        } else {
+          panes[k].classList.add('hidden');
+          btns[k].className = 'py-2.5 px-2 text-slate-500 hover:text-slate-800 flex items-center justify-center gap-1.5';
+        }
+      });
+    }
+
+    window.addEventListener('DOMContentLoaded', () => {
+      lucide.createIcons();
+      renderDynamicPickupSliders();
+
+      document.getElementById('btnPlayPause').addEventListener('click', startPlayback);
+      document.getElementById('btnNextStep').addEventListener('click', () => {
+        stopPlayback();
+        if (currentStep < steps.length - 1) {
+          currentStep += 1;
+          playTone(440 + currentStep * 25, 0.06, 'sine', 0.03);
+          renderCurrentState();
+        }
+      });
+      document.getElementById('btnPrevStep').addEventListener('click', () => {
+        stopPlayback();
+        if (currentStep > 0) {
+          currentStep -= 1;
+          playTone(380, 0.05, 'sine', 0.03);
+          renderCurrentState();
+        }
+      });
+      document.getElementById('btnResetSim').addEventListener('click', () => {
+        stopPlayback();
+        inspectedSourceId = null;
+        NODES = JSON.parse(JSON.stringify(INITIAL_NODES));
+        edges = JSON.parse(JSON.stringify(INITIAL_EDGES));
+        pickups = {
+          A: { weight: 10, type: 'Batteries' },
+          B: { weight: 15, type: 'Computers' },
+          C: { weight: 5,  type: 'Batteries' }
+        };
+        renderDynamicPickupSliders();
+        rebuildTimeline(0);
+      });
+
+      document.querySelectorAll('.speed-pill').forEach(btn => {
+        btn.addEventListener('click', () => {
+          simSpeed = parseFloat(btn.getAttribute('data-speed'));
+          document.getElementById('speedReadout').textContent = `${simSpeed.toFixed(1)}× Speed`;
+          document.querySelectorAll('.speed-pill').forEach(b => {
+            b.className = 'speed-pill py-1 rounded text-[11px] font-mono font-medium border border-slate-200 text-slate-600 hover:bg-slate-50';
+          });
+          btn.className = 'speed-pill py-1 rounded text-[11px] font-mono font-semibold border border-slate-900 bg-slate-900 text-white';
+          if (playTimer) {
+            stopPlayback();
+            startPlayback();
+          }
+        });
+      });
+
+      document.getElementById('tabBtnInspector').addEventListener('click', () => switchTab('inspector'));
+      document.getElementById('tabBtnParams').addEventListener('click', () => switchTab('params'));
+      document.getElementById('tabBtnLogs').addEventListener('click', () => switchTab('logs'));
+
+      document.getElementById('btnPresetDefault').addEventListener('click', () => {
+        loadPreset({ A: { weight: 10, type: 'Batteries' }, B: { weight: 15, type: 'Computers' }, C: { weight: 5, type: 'Batteries' }, capR1: 20, capR2: 25 });
+      });
+      document.getElementById('btnPresetFallback').addEventListener('click', () => {
+        loadPreset({ A: { weight: 10, type: 'Batteries' }, B: { weight: 15, type: 'Computers' }, C: { weight: 12, type: 'Batteries' }, capR1: 25, capR2: 25 });
+      });
+      document.getElementById('btnPresetExhaust').addEventListener('click', () => {
+        loadPreset({ A: { weight: 18, type: 'Batteries' }, B: { weight: 20, type: 'Computers' }, C: { weight: 10, type: 'Batteries' }, capR1: 20, capR2: 25 });
+      });
+
+      document.getElementById('rngCapR1').addEventListener('input', (e) => {
+        stopPlayback();
+        facilities.R1.maxCap = parseInt(e.target.value, 10);
+        document.getElementById('lblCapR1').textContent = `${facilities.R1.maxCap} kg`;
+        rebuildTimeline(currentStep);
+      });
+      document.getElementById('rngCapR2').addEventListener('input', (e) => {
+        stopPlayback();
+        facilities.R2.maxCap = parseInt(e.target.value, 10);
+        document.getElementById('lblCapR2').textContent = `${facilities.R2.maxCap} kg`;
+        rebuildTimeline(currentStep);
+      });
+
+      function syncFacilityAcceptedTypes() {
+        stopPlayback();
+        const r1 = [];
+        if (document.getElementById('chkR1Bat').checked) r1.push('Batteries');
+        if (document.getElementById('chkR1Comp').checked) r1.push('Computers');
+        facilities.R1.accepted = r1;
+
+        const r2 = [];
+        if (document.getElementById('chkR2Bat').checked) r2.push('Batteries');
+        if (document.getElementById('chkR2Comp').checked) r2.push('Computers');
+        facilities.R2.accepted = r2;
+
+        rebuildTimeline(currentStep);
+      }
+      ['chkR1Bat', 'chkR1Comp', 'chkR2Bat', 'chkR2Comp'].forEach(id => {
+        document.getElementById(id).addEventListener('change', syncFacilityAcceptedTypes);
+      });
+
+      document.getElementById('selGreedyOrder').addEventListener('change', (e) => {
+        stopPlayback();
+        greedyOrderMode = e.target.value;
+        rebuildTimeline(0);
+      });
+
+      document.getElementById('btnSaveEdgeWeight').addEventListener('click', () => {
+        if (!editingEdgeId) return;
+        const val = parseInt(document.getElementById('edgeWeightInput').value, 10);
+        const edge = edges.find(e => e.id === editingEdgeId);
+        if (edge && !isNaN(val) && val >= 1 && val <= 50) {
+          edge.weight = val;
+          edge.traffic = false;
+          closeEdgeWeightPopover();
+          rebuildTimeline(currentStep);
+        }
+      });
+      document.getElementById('btnToggleTraffic').addEventListener('click', () => {
+        if (!editingEdgeId) return;
+        const edge = edges.find(e => e.id === editingEdgeId);
+        if (edge) {
+          if (edge.traffic) {
+            edge.weight = edge.baseWeight || Math.max(1, Math.round(edge.weight / 2));
+            edge.traffic = false;
+          } else {
+            edge.baseWeight = edge.weight;
+            edge.weight = edge.weight * 2;
+            edge.traffic = true;
+          }
+          playTone(330, 0.09, 'sawtooth', 0.03);
+          closeEdgeWeightPopover();
+          rebuildTimeline(currentStep);
+        }
+      });
+      document.getElementById('btnDeleteEdge').addEventListener('click', () => {
+        if (!editingEdgeId) return;
+        edges = edges.filter(e => e.id !== editingEdgeId);
+        playTone(300, 0.08, 'sine', 0.04);
+        closeEdgeWeightPopover();
+        rebuildTimeline(0);
+      });
+      document.getElementById('btnClosePopover').addEventListener('click', closeEdgeWeightPopover);
+
+      document.getElementById('modeSelectBtn').addEventListener('click', () => setCanvasMode('select'));
+      document.getElementById('modeAddNodeBtn').addEventListener('click', () => setCanvasMode('addNode'));
+      document.getElementById('modeAddEdgeBtn').addEventListener('click', () => setCanvasMode('addEdge'));
+
+      document.getElementById('btnCompareOptimal').addEventListener('click', () => {
+        switchTab('inspector');
+        const greedyFinal = steps[steps.length - 1];
+        const opt = solveGlobalOptimal();
+        const card = document.getElementById('optimalCompareCard');
+        const body = document.getElementById('optimalCompareBody');
+        card.classList.remove('hidden');
+
+        const diff = greedyFinal.totalKm - opt.bestDist;
+        const statusMsg = (greedyFinal.routedKg === opt.bestRouted && diff === 0)
+          ? 'Greedy matches Global Optimal!'
+          : `Global Optimal saves ${diff} km (${opt.bestRouted}kg in ${opt.bestDist}km).`;
+
+        body.innerHTML = `
+          <div>Greedy: <strong>${greedyFinal.routedKg} kg</strong> in <strong>${greedyFinal.totalKm} km</strong> | Optimal: <strong>${opt.bestRouted} kg</strong> in <strong>${opt.bestDist} km</strong></div>
+          <div class="text-[11px] text-emerald-800 mt-0.5">${statusMsg}</div>
+        `;
+        playTone(540, 0.1, 'sine', 0.04);
+      });
+      document.getElementById('btnCloseOptimalCard').addEventListener('click', () => {
+        document.getElementById('optimalCompareCard').classList.add('hidden');
+      });
+
+      document.getElementById('btnToggleAudio').addEventListener('click', () => {
+        audioEnabled = !audioEnabled;
+        document.getElementById('labelAudio').textContent = audioEnabled ? 'Sound On' : 'Muted';
+        document.getElementById('iconAudio').setAttribute('data-lucide', audioEnabled ? 'volume-2' : 'volume-x');
+        lucide.createIcons();
+      });
+
+      document.getElementById('btnZoomIn').addEventListener('click', () => {
+        viewState.scale = Math.min(1.6, +(viewState.scale + 0.15).toFixed(2));
+        applyViewportTransform();
+      });
+      document.getElementById('btnZoomOut').addEventListener('click', () => {
+        viewState.scale = Math.max(0.7, +(viewState.scale - 0.15).toFixed(2));
+        applyViewportTransform();
+      });
+      document.getElementById('btnZoomFit').addEventListener('click', () => {
+        viewState = { scale: 1, tx: 0, ty: 0 };
+        applyViewportTransform();
+      });
+
+      const canvasWrap = document.getElementById('canvasWrapper');
+      const customPointer = document.getElementById('customMapPointer');
+      const pointerOuterRing = document.getElementById('pointerOuterRing');
+      const pointerInnerHalo = document.getElementById('pointerInnerHalo');
+      const pointerCoreDot = document.getElementById('pointerCoreDot');
+      const pointerModeDot = document.getElementById('pointerModeDot');
+      const pointerModeText = document.getElementById('pointerModeText');
+      const pointerCoordText = document.getElementById('pointerCoordText');
+      const cursorGuidesLayer = document.getElementById('cursorGuidesLayer');
+      const guideLineX = document.getElementById('guideLineX');
+      const guideLineY = document.getElementById('guideLineY');
+
+      function updateCustomPointerAppearance(isHoveringNode = false, isDragging = false) {
+        let color = '#0F172A';
+        let haloFill = 'rgba(15, 23, 42, 0.06)';
+        let dotClass = 'bg-sky-400';
+        let label = 'INSPECT';
+        let scale = 1;
+
+        if (isDragging) {
+          color = '#0284C7';
+          haloFill = 'rgba(2, 132, 199, 0.16)';
+          dotClass = 'bg-sky-400';
+          label = 'MOVING NODE';
+          scale = 1.18;
+        } else if (canvasMode === 'addNode') {
+          color = '#D97706';
+          haloFill = 'rgba(217, 119, 6, 0.14)';
+          dotClass = 'bg-amber-400';
+          label = 'PLACE PICKUP';
+          scale = 1.12;
+        } else if (canvasMode === 'addEdge') {
+          color = '#0284C7';
+          haloFill = 'rgba(2, 132, 199, 0.14)';
+          dotClass = 'bg-sky-400';
+          label = pendingEdgeStartNode ? `LINK FROM ${pendingEdgeStartNode}` : 'SELECT START';
+          scale = 1.12;
+        } else if (isHoveringNode) {
+          color = '#059669';
+          haloFill = 'rgba(5, 150, 105, 0.14)';
+          dotClass = 'bg-emerald-400';
+          label = 'DRAG / INSPECT';
+          scale = 1.15;
+        }
+
+        pointerOuterRing.setAttribute('stroke', color);
+        pointerInnerHalo.setAttribute('stroke', color);
+        pointerInnerHalo.setAttribute('fill', haloFill);
+        pointerCoreDot.setAttribute('fill', color);
+        pointerModeDot.className = `w-1.5 h-1.5 rounded-full ${dotClass}`;
+        pointerModeText.textContent = label;
+        document.getElementById('pointerSvg').style.transform = `scale(${scale})`;
+        document.getElementById('pointerSvg').style.transition = 'transform 0.15s cubic-bezier(0.22, 1, 0.36, 1)';
+      }
+
+      canvasWrap.addEventListener('pointerenter', () => {
+        canvasWrap.classList.add('custom-cursor-active');
+        customPointer.classList.remove('opacity-0');
+        cursorGuidesLayer.classList.remove('hidden');
+      });
+
+      canvasWrap.addEventListener('pointerleave', () => {
+        canvasWrap.classList.remove('custom-cursor-active');
+        customPointer.classList.add('opacity-0');
+        cursorGuidesLayer.classList.add('hidden');
+      });
+
+      canvasWrap.addEventListener('pointermove', (evt) => {
+        const overUiChrome = evt.target.closest('#builderToolbar') || evt.target.closest('#zoomToolbar') || evt.target.closest('#edgePopover');
+        if (overUiChrome) {
+          customPointer.classList.add('opacity-0');
+          cursorGuidesLayer.classList.add('hidden');
+          return;
+        }
+        customPointer.classList.remove('opacity-0');
+        cursorGuidesLayer.classList.remove('hidden');
+        customPointer.style.transform = `translate3d(${evt.clientX}px, ${evt.clientY}px, 0)`;
+
+        const svgPt = clientToSvgCoords(evt.clientX, evt.clientY);
+        const clampedX = Math.max(0, Math.min(880, Math.round(svgPt.x)));
+        const clampedY = Math.max(0, Math.min(560, Math.round(svgPt.y)));
+        pointerCoordText.textContent = `${clampedX}, ${clampedY}`;
+
+        guideLineX.setAttribute('y1', svgPt.y);
+        guideLineX.setAttribute('y2', svgPt.y);
+        guideLineY.setAttribute('x1', svgPt.x);
+        guideLineY.setAttribute('x2', svgPt.x);
+
+        const hoveringNode = Boolean(evt.target.closest('#nodesLayer g[data-node-id]'));
+        updateCustomPointerAppearance(hoveringNode, Boolean(draggingNodeId));
+      });
+
+      document.getElementById('builderToolbar').addEventListener('pointerdown', (e) => e.stopPropagation());
+      document.getElementById('zoomToolbar').addEventListener('pointerdown', (e) => e.stopPropagation());
+      document.getElementById('edgePopover').addEventListener('pointerdown', (e) => e.stopPropagation());
+
+      canvasWrap.addEventListener('pointerdown', (evt) => {
+        if (evt.target.closest('button') || evt.target.closest('input')) return;
+        if (canvasMode === 'addNode') {
+          const pt = clientToSvgCoords(evt.clientX, evt.clientY);
+          addDynamicPickupNode(pt.x, pt.y);
+          return;
+        }
+        if (draggingNodeId) return;
+        panningCanvas = true;
+        panStart = { x: evt.clientX - viewState.tx, y: evt.clientY - viewState.ty };
+      });
+      window.addEventListener('pointermove', (evt) => {
+        if (draggingNodeId && canvasMode === 'select') {
+          const pt = clientToSvgCoords(evt.clientX, evt.clientY);
+          const node = NODES[draggingNodeId];
+          if (node) {
+            const nextX = Math.max(55, Math.min(825, pt.x + dragOffset.dx));
+            const nextY = Math.max(55, Math.min(500, pt.y + dragOffset.dy));
+            if (Math.abs(nextX - node.x) > 0.5 || Math.abs(nextY - node.y) > 0.5) {
+              dragMoved = true;
+            }
+            node.x = nextX;
+            node.y = nextY;
+            if (!dragRafPending) {
+              dragRafPending = true;
+              const activeId = draggingNodeId;
+              requestAnimationFrame(() => {
+                dragRafPending = false;
+                updateDraggedNodeDOM(activeId);
+              });
+            }
+          }
+          return;
+        }
+        if (!panningCanvas) return;
+        viewState.tx = evt.clientX - panStart.x;
+        viewState.ty = evt.clientY - panStart.y;
+        applyViewportTransform();
+      });
+      window.addEventListener('pointerup', () => {
+        if (draggingNodeId) {
+          const releasedId = draggingNodeId;
+          draggingNodeId = null;
+          if (!dragMoved && canvasMode === 'select' && NODES[releasedId] && NODES[releasedId].kind === 'pickup') {
+            inspectedSourceId = inspectedSourceId === releasedId ? null : releasedId;
+          }
+          renderNetworkSVG(steps[currentStep]);
+        }
+        panningCanvas = false;
+      });
+
+      const mapCard = document.getElementById('mapCardContainer');
+      let isFullscreen = false;
+      document.getElementById('btnExpandMap').addEventListener('click', () => {
+        isFullscreen = !isFullscreen;
+        if (isFullscreen) {
+          mapCard.classList.add('map-fullscreen');
+          canvasWrap.classList.remove('h-[540px]', 'lg:h-[600px]');
+          canvasWrap.classList.add('flex-1');
+          document.getElementById('textExpandMap').textContent = 'Exit Fullscreen';
+          document.getElementById('iconExpandMap').setAttribute('data-lucide', 'minimize-2');
+        } else {
+          mapCard.classList.remove('map-fullscreen');
+          canvasWrap.classList.add('h-[540px]', 'lg:h-[600px]');
+          canvasWrap.classList.remove('flex-1');
+          document.getElementById('textExpandMap').textContent = 'Expand Map';
+          document.getElementById('iconExpandMap').setAttribute('data-lucide', 'maximize-2');
+        }
+        lucide.createIcons();
+      });
+
+      document.getElementById('btnClearTrace').addEventListener('click', () => {
+        document.getElementById('traceConsole').innerHTML = '';
+      });
+
+      const modal = document.getElementById('theoryModal');
+      document.getElementById('btnOpenTheory').addEventListener('click', () => {
+        modal.classList.remove('hidden');
+        modal.classList.add('flex');
+      });
+      document.getElementById('btnCloseTheory').addEventListener('click', () => {
+        modal.classList.add('hidden');
+        modal.classList.remove('flex');
+      });
+      modal.addEventListener('click', (e) => {
+        if (e.target === modal) {
+          modal.classList.add('hidden');
+          modal.classList.remove('flex');
+        }
+      });
+
+      // Presentation Keyboard Shortcuts (Space, Left/Right Arrows, R)
+      window.addEventListener('keydown', (e) => {
+        if (['INPUT', 'SELECT', 'TEXTAREA'].includes(document.activeElement?.tagName)) return;
+        if (e.code === 'Space') {
+          e.preventDefault();
+          startPlayback();
+        } else if (e.code === 'ArrowRight') {
+          e.preventDefault();
+          document.getElementById('btnNextStep').click();
+        } else if (e.code === 'ArrowLeft') {
+          e.preventDefault();
+          document.getElementById('btnPrevStep').click();
+        } else if (e.key === 'r' || e.key === 'R') {
+          e.preventDefault();
+          document.getElementById('btnResetSim').click();
+        }
+      });
+
+      rebuildTimeline(0);
+    });
+  </script>
+</body>
+</html>
